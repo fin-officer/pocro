@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  invoice-ocr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: invoice-ocr-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/models:/app/data/models
+      - ./data/temp:/app/data/temp
+      - ./data/output:/app/data/output
+      - ./logs:/app/logs
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+      - GPU_MEMORY_UTILIZATION=0.9
+      - MAX_MODEL_LENGTH=4096
+      - MODEL_NAME=mistral-7b-instruct
+      - LOG_LEVEL=INFO
+    env_file:
+      - .env
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  redis:
+    image: redis:7-alpine
+    container_name: invoice-ocr-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: invoice-ocr-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  prometheus_data:
+
+networks:
+  default:
+    driver: bridge
