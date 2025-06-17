@@ -1,0 +1,4 @@
+"""
+validate_installation.py
+"""
+

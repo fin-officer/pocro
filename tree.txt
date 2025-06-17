@@ -1,0 +1,126 @@
+european-invoice-ocr/
+├── README.md
+├── requirements.txt
+├── requirements-dev.txt
+├── pyproject.toml
+├── .env.example
+├── .gitignore
+├── .dockerignore
+├── Dockerfile
+├── docker-compose.yml
+├── docker-compose.dev.yml
+├── Makefile
+├── setup.py
+│
+├── src/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── config/
+│   │   ├── __init__.py
+│   │   ├── settings.py
+│   │   └── logging_config.py
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── preprocessor.py
+│   │   ├── ocr_engine.py
+│   │   ├── table_extractor.py
+│   │   ├── llm_processor.py
+│   │   └── pipeline.py
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── invoice_schema.py
+│   │   └── validation.py
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── routes.py
+│   │   ├── dependencies.py
+│   │   └── middleware.py
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   ├── file_utils.py
+│   │   ├── image_utils.py
+│   │   ├── text_utils.py
+│   │   └── monitoring.py
+│   └── prompts/
+│       ├── __init__.py
+│       ├── extraction_prompts.py
+│       └── templates/
+│           ├── german.txt
+│           ├── english.txt
+│           └── estonian.txt
+│
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py
+│   ├── test_main.py
+│   ├── unit/
+│   │   ├── __init__.py
+│   │   ├── test_preprocessor.py
+│   │   ├── test_ocr_engine.py
+│   │   ├── test_table_extractor.py
+│   │   ├── test_llm_processor.py
+│   │   └── test_validation.py
+│   ├── integration/
+│   │   ├── __init__.py
+│   │   ├── test_api.py
+│   │   └── test_pipeline.py
+│   ├── fixtures/
+│   │   ├── sample_invoices/
+│   │   │   ├── german_invoice.pdf
+│   │   │   ├── english_invoice.pdf
+│   │   │   ├── estonian_invoice.pdf
+│   │   │   └── complex_table_invoice.pdf
+│   │   └── expected_outputs/
+│   │       ├── german_expected.json
+│   │       ├── english_expected.json
+│   │       └── estonian_expected.json
+│   └── performance/
+│       ├── __init__.py
+│       ├── test_memory_usage.py
+│       └── test_throughput.py
+│
+├── scripts/
+│   ├── setup_environment.sh
+│   ├── download_models.py
+│   ├── benchmark.py
+│   ├── validate_installation.py
+│   └── migrate_data.py
+│
+├── docs/
+│   ├── README.md
+│   ├── INSTALLATION.md
+│   ├── API_DOCUMENTATION.md
+│   ├── DEPLOYMENT.md
+│   ├── TROUBLESHOOTING.md
+│   └── examples/
+│       ├── python_usage.py
+│       ├── api_usage.py
+│       └── batch_processing.py
+│
+├── data/
+│   ├── models/
+│   │   └── .gitkeep
+│   ├── temp/
+│   │   └── .gitkeep
+│   └── output/
+│       └── .gitkeep
+│
+├── configs/
+│   ├── model_configs/
+│   │   ├── mistral_7b.json
+│   │   ├── qwen2_5_7b.json
+│   │   └── llama_3_1_8b.json
+│   ├── ocr_configs/
+│   │   ├── easyocr_config.json
+│   │   └── paddleocr_config.json
+│   └── deployment/
+│       ├── production.yml
+│       ├── staging.yml
+│       └── development.yml
+│
+└── monitoring/
+    ├── __init__.py
+    ├── metrics.py
+    ├── health_check.py
+    └── dashboards/
+        └── grafana_dashboard.json
