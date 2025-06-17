@@ -70,8 +70,8 @@ docker-stop:
 
 # Setup environment
 setup:
-	chmod +x scripts/setup_environment.sh
-	./scripts/setup_environment.sh
+	chmod +x scripts/setup.sh
+	./scripts/setup.sh
 
 # Download models
 download-models:
