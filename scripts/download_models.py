@@ -13,8 +13,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 
 MODELS = {
-    "mistral-7b": "mistralai/Mistral-7B-v0.1",  # Open-access base model
-    "tinyllama": "TinyLlama/TinyLlama-1.1B-Chat-v1.0"  # Small, open model for testing
+    "test-model": "sshleifer/tiny-gpt2"  # Very small test model
 }
 
 def download_model(model_name: str, model_id: str, cache_dir: str):
