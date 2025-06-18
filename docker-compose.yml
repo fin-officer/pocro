@@ -54,7 +54,7 @@ services:
     image: redis:7-alpine
     container_name: invoice-ocr-redis
     ports:
-      - "63790:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped

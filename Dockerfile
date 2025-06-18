@@ -65,10 +65,10 @@ RUN poetry install --no-interaction --no-ansi --no-root --only main
 RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 # Copy application code and configuration
-COPY src/ ./src/
-COPY configs/ ./configs/
-COPY scripts/ ./scripts/
-COPY data/README.md ./data/README.md
+COPY . .
+
+# Install the package in development mode
+RUN pip install -e .
 
 # Create necessary directories with correct permissions
 RUN mkdir -p /app/data/models /app/data/temp /app/data/output /app/logs && \

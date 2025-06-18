@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     output_dir: str = "./data/output"
     
     # Database settings
-    redis_url: str = "redis://localhost:63790/0"
+    redis_url: str = "redis://localhost:6380/0"
     
     # Monitoring
     enable_metrics: bool = True
