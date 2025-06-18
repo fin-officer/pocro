@@ -13,9 +13,9 @@ PyMuPDF==1.20.2
 Pillow==10.1.0
 
 # LLM and ML
-transformers==4.38.0
-torch==2.2.0
-torchvision==0.17.0
+transformers>=4.39.1
+torch==2.1.2
+torchvision==0.16.2
 vllm==0.4.0
 bitsandbytes==0.42.0
 accelerate==0.27.2
