@@ -17,11 +17,11 @@ help:
 
 # Installation
 install:
-	pip install -r requirements.txt
+	poetry install --without dev
 
 install-dev:
-	pip install -r requirements.txt -r requirements-dev.txt
-	pre-commit install
+	poetry install --with dev
+	poetry run pre-commit install
 
 # Testing
 test:

@@ -1,339 +1,436 @@
 """
-Main processing pipeline for European invoice OCR
+Main processing pipeline for European Invoice OCR
 """
 import asyncio
-import tempfile
 import time
-from pathlib import Path
-from typing import Dict, Any, List, Optional
-import logging
+import tempfile
 import os
-
+from pathlib import Path
+from typing import List, Dict, Optional, Any
+import logging
 import numpy as np
 import cv2
+from PIL import Image
+
 from fastapi import UploadFile
 
-from ..config.settings import Settings
-from .preprocessor import InvoicePreprocessor
-from .ocr_engine import MultilingualOCREngine
-from .table_extractor import TableExtractor
-from .llm_processor import LLMProcessor
-from ..utils.file_utils import save_temp_file, cleanup_temp_file
-from ..utils.monitoring import monitor_memory_usage
+from config.settings import Settings
+from core.preprocessor import InvoicePreprocessor
+from core.ocr_engine import InvoiceOCREngine
+from core.table_extractor import InvoiceTableExtractor
+from core.llm_processor import LLMProcessor
+from utils.monitoring import monitor_memory_usage, track_processing_time
+from utils.file_utils import save_temp_file, cleanup_temp_file
 
 logger = logging.getLogger(__name__)
 
 
 class EuropeanInvoiceProcessor:
-    """Main processing pipeline for European invoices"""
+    """Main pipeline for processing European invoices"""
 
     def __init__(self, settings: Settings):
-        """Initialize the processing pipeline"""
         self.settings = settings
-
-        # Initialize components
-        self.preprocessor = InvoicePreprocessor()
+        self.preprocessor = None
         self.ocr_engine = None
         self.table_extractor = None
         self.llm_processor = None
 
-        # Metrics
-        self.total_processed = 0
-        self.successful_extractions = 0
-        self.failed_extractions = 0
-        self.total_processing_time = 0
+        # Processing statistics
+        self.stats = {
+            'processed_count': 0,
+            'success_count': 0,
+            'error_count': 0,
+            'total_processing_time': 0,
+            'avg_processing_time': 0
+        }
+
+        logger.info("European Invoice Processor initialized")
 
     async def initialize(self):
-        """Initialize all components"""
-        logger.info("Initializing European Invoice Processor...")
-
+        """Initialize all processing components"""
         try:
+            logger.info("Initializing processing components...")
+
+            # Initialize preprocessor
+            self.preprocessor = InvoicePreprocessor()
+            logger.info("✓ Preprocessor initialized")
+
             # Initialize OCR engine
-            self.ocr_engine = MultilingualOCREngine(
-                languages=self.settings.ocr_languages,
-                engine=self.settings.ocr_engine
+            self.ocr_engine = InvoiceOCREngine(
+                engine_type=self.settings.ocr_engine,
+                languages=self.settings.ocr_languages
             )
-            logger.info("OCR engine initialized")
+            logger.info("✓ OCR engine initialized")
 
             # Initialize table extractor
-            self.table_extractor = TableExtractor(use_ppstructure=True)
-            logger.info("Table extractor initialized")
+            self.table_extractor = InvoiceTableExtractor(use_pp_structure=True)
+            logger.info("✓ Table extractor initialized")
 
             # Initialize LLM processor
             self.llm_processor = LLMProcessor(
                 model_name=self.settings.model_name,
                 quantization=self.settings.quantization,
-                use_vllm=True,
-                max_model_len=self.settings.max_model_length
+                use_vllm=True
             )
             await self.llm_processor.initialize()
-            logger.info("LLM processor initialized")
+            logger.info("✓ LLM processor initialized")
 
-            logger.info("European Invoice Processor initialization complete")
+            logger.info("All components initialized successfully")
 
         except Exception as e:
-            logger.error(f"Failed to initialize processor: {e}")
+            logger.error(f"Failed to initialize components: {e}")
             raise
 
     async def process_invoice_upload(self, file: UploadFile) -> Dict[str, Any]:
-        """Process an uploaded invoice file"""
+        """
+        Process uploaded invoice file
+
+        Args:
+            file: Uploaded file
+
+        Returns:
+            Processing result
+        """
+        start_time = time.time()
         temp_file_path = None
 
         try:
             # Save uploaded file temporarily
             temp_file_path = await save_temp_file(file, self.settings.temp_dir)
 
-            # Process the file
+            # Process the invoice
             result = await self.process_invoice_file(temp_file_path)
 
+            # Add metadata
+            result['filename'] = file.filename
+            result['processing_time'] = time.time() - start_time
+            result['file_size'] = file.size if hasattr(file, 'size') else 0
+
+            # Update statistics
+            self._update_stats(True, result['processing_time'])
+
+            logger.info(f"Successfully processed {file.filename} in {result['processing_time']:.2f}s")
             return result
 
         except Exception as e:
-            logger.error(f"Error processing uploaded file {file.filename}: {e}")
-            raise
+            error_result = {
+                'status': 'error',
+                'error': str(e),
+                'filename': file.filename,
+                'processing_time': time.time() - start_time
+            }
+
+            self._update_stats(False, time.time() - start_time)
+            logger.error(f"Failed to process {file.filename}: {e}")
+            return error_result
+
         finally:
-            # Cleanup temp file
+            # Cleanup temporary file
             if temp_file_path:
-                cleanup_temp_file(temp_file_path)
+                await cleanup_temp_file(temp_file_path)
 
     async def process_invoice_file(self, file_path: str) -> Dict[str, Any]:
-        """Process a single invoice file"""
-        start_time = time.time()
+        """
+        Process invoice file from disk
 
+        Args:
+            file_path: Path to invoice file
+
+        Returns:
+            Processing result
+        """
         try:
             logger.info(f"Processing invoice file: {file_path}")
 
-            # Step 1: Load and preprocess image
-            image = await self._load_and_preprocess_image(file_path)
-            logger.debug("Image preprocessing completed")
+            # Step 1: Convert PDF to images if needed
+            images = await self._load_invoice_images(file_path)
 
-            # Step 2: Extract text with OCR
-            ocr_results, detected_language = self.ocr_engine.extract_text(image, detect_language=True)
-            full_text = self.ocr_engine.get_full_text(ocr_results)
-            logger.debug(f"OCR completed, detected language: {detected_language}")
+            # Step 2: Process each page/image
+            all_results = []
+            for i, image in enumerate(images):
+                logger.debug(f"Processing page {i+1}/{len(images)}")
 
-            # Step 3: Extract tables and line items
-            tables = self.table_extractor.extract_tables(image)
-            line_items = self.table_extractor.extract_line_items_from_ocr(ocr_results, image.shape[0])
-            logger.debug(f"Table extraction completed, found {len(tables)} tables, {len(line_items)} line items")
+                page_result = await self._process_single_image(image, f"page_{i+1}")
+                all_results.append(page_result)
 
-            # Step 4: LLM-based structured extraction
-            structured_data = await self.llm_processor.extract_structured_data(full_text, detected_language)
-            logger.debug("LLM extraction completed")
+            # Step 3: Combine results from all pages
+            combined_result = self._combine_page_results(all_results)
 
-            # Step 5: Enhance with table data
-            enhanced_data = self._enhance_with_table_data(structured_data, line_items, tables)
-
-            # Step 6: Add metadata
-            processing_time = time.time() - start_time
-            enhanced_data.update({
-                "processing_metadata": {
-                    "processing_time": processing_time,
-                    "detected_language": detected_language,
-                    "ocr_engine": self.settings.ocr_engine,
-                    "model_name": self.settings.model_name,
-                    "num_ocr_results": len(ocr_results),
-                    "num_tables": len(tables),
-                    "num_line_items": len(line_items),
-                    "file_path": file_path
-                }
-            })
-
-            # Update metrics
-            self.total_processed += 1
-            self.successful_extractions += 1
-            self.total_processing_time += processing_time
-
-            logger.info(f"Invoice processing completed in {processing_time:.2f}s")
-            return enhanced_data
+            return {
+                'status': 'success',
+                'pages_processed': len(images),
+                'extracted_data': combined_result,
+                'page_results': all_results
+            }
 
         except Exception as e:
-            self.total_processed += 1
-            self.failed_extractions += 1
-            logger.error(f"Error processing invoice {file_path}: {e}")
+            logger.error(f"Error processing invoice file {file_path}: {e}")
             raise
 
-    async def _load_and_preprocess_image(self, file_path: str) -> np.ndarray:
-        """Load and preprocess image/PDF"""
-        file_path = Path(file_path)
+    async def _load_invoice_images(self, file_path: str) -> List[np.ndarray]:
+        """Load and convert invoice file to images"""
+        try:
+            file_ext = Path(file_path).suffix.lower()
 
-        if file_path.suffix.lower() == '.pdf':
-            # Convert PDF to images
-            images = self.preprocessor.pdf_to_images(str(file_path))
-            if not images:
-                raise ValueError("No images extracted from PDF")
-            # Use first page for now
-            image = images[0]
-        else:
-            # Load image directly
-            image = cv2.imread(str(file_path))
-            if image is None:
-                raise ValueError(f"Could not load image from {file_path}")
+            if file_ext == '.pdf':
+                # Convert PDF to images
+                pil_images = self.preprocessor.pdf_to_images(file_path)
+                images = [np.array(img) for img in pil_images]
+                logger.debug(f"Converted PDF to {len(images)} images")
 
-        # Preprocess image
-        processed_image = self.preprocessor.preprocess_invoice_image(image)
+            elif file_ext in ['.jpg', '.jpeg', '.png', '.tiff', '.bmp']:
+                # Load single image
+                image = cv2.imread(file_path)
+                if image is None:
+                    raise ValueError(f"Could not load image from {file_path}")
+                images = [image]
+                logger.debug("Loaded single image")
 
-        return processed_image
-
-    def _enhance_with_table_data(self, structured_data: Dict[str, Any],
-                                line_items: List, tables: List) -> Dict[str, Any]:
-        """Enhance structured data with table extraction results"""
-
-        # Add line items if not present or improve existing ones
-        if line_items:
-            # Convert line items to dict format
-            line_items_data = [item.to_dict() for item in line_items]
-
-            if "invoice_lines" not in structured_data or not structured_data["invoice_lines"]:
-                structured_data["invoice_lines"] = line_items_data
             else:
-                # Try to merge/improve existing line items
-                structured_data["invoice_lines"] = self._merge_line_items(
-                    structured_data["invoice_lines"],
-                    line_items_data
+                raise ValueError(f"Unsupported file format: {file_ext}")
+
+            return images
+
+        except Exception as e:
+            logger.error(f"Failed to load images from {file_path}: {e}")
+            raise
+
+    async def _process_single_image(self, image: np.ndarray, page_id: str) -> Dict[str, Any]:
+        """Process a single invoice image"""
+        try:
+            # Step 1: Preprocess image
+            logger.debug(f"Preprocessing {page_id}")
+            preprocessed_image = self.preprocessor.preprocess_invoice_image(image)
+
+            # Step 2: OCR text extraction
+            logger.debug(f"Extracting text from {page_id}")
+            ocr_result = self.ocr_engine.extract_invoice_text(preprocessed_image)
+
+            # Step 3: Table extraction
+            logger.debug(f"Extracting tables from {page_id}")
+            tables = self.table_extractor.extract_tables(preprocessed_image, ocr_result['text_elements'])
+
+            # Step 4: Parse line items from tables
+            line_items = self.table_extractor.parse_invoice_line_items(tables)
+
+            # Step 5: Detect language
+            detected_language = self.ocr_engine.detect_language(ocr_result['text_elements'])
+
+            # Step 6: LLM structured extraction
+            logger.debug(f"Extracting structured data from {page_id}")
+            structured_data = await self.llm_processor.extract_structured_data(
+                ocr_result['full_text'],
+                detected_language
+            )
+
+            # Step 7: Merge table data with LLM data
+            merged_data = self._merge_extraction_results(structured_data, line_items, tables)
+
+            return {
+                'page_id': page_id,
+                'ocr_result': ocr_result,
+                'tables': tables,
+                'line_items': line_items,
+                'detected_language': detected_language,
+                'structured_data': merged_data,
+                'quality_metrics': self._calculate_quality_metrics(ocr_result, structured_data)
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing {page_id}: {e}")
+            return {
+                'page_id': page_id,
+                'error': str(e),
+                'ocr_result': {'full_text': '', 'text_elements': []},
+                'structured_data': {}
+            }
+
+    def _merge_extraction_results(self, llm_data: Dict, line_items: List[Dict], tables: List[Dict]) -> Dict:
+        """Merge LLM extraction with table extraction results"""
+        try:
+            # Start with LLM data as base
+            merged = llm_data.copy()
+
+            # Enhance line items with table data if available
+            if line_items and not merged.get('invoice_lines'):
+                merged['invoice_lines'] = line_items
+            elif line_items and merged.get('invoice_lines'):
+                # Compare and potentially merge line items
+                merged['invoice_lines'] = self._merge_line_items(merged['invoice_lines'], line_items)
+
+            # Add table metadata
+            merged['tables_detected'] = len(tables)
+            merged['table_line_items'] = len(line_items)
+
+            # Validate financial totals
+            merged = self._validate_financial_totals(merged)
+
+            return merged
+
+        except Exception as e:
+            logger.error(f"Error merging extraction results: {e}")
+            return llm_data
+
+    def _merge_line_items(self, llm_items: List[Dict], table_items: List[Dict]) -> List[Dict]:
+        """Merge line items from LLM and table extraction"""
+        # For now, prefer table extraction for line items as it's more structured
+        if table_items:
+            return table_items
+        return llm_items
+
+    def _validate_financial_totals(self, data: Dict) -> Dict:
+        """Validate and correct financial totals"""
+        try:
+            line_items = data.get('invoice_lines', [])
+
+            if line_items:
+                # Calculate totals from line items
+                calculated_subtotal = sum(
+                    float(item.get('line_total', 0)) for item in line_items
                 )
 
-        # Add table information
-        if tables:
-            structured_data["extracted_tables"] = [table.to_dict() for table in tables]
+                # Update totals if they seem incorrect
+                if not data.get('total_excl_vat') or abs(data['total_excl_vat'] - calculated_subtotal) > 0.01:
+                    data['total_excl_vat'] = calculated_subtotal
 
-        return structured_data
+                    # Estimate VAT if not present
+                    if not data.get('total_vat'):
+                        # Assume 20% VAT as default for European invoices
+                        data['total_vat'] = calculated_subtotal * 0.20
 
-    def _merge_line_items(self, llm_items: List[Dict], ocr_items: List[Dict]) -> List[Dict]:
-        """Merge line items from LLM and OCR extraction"""
-        # Simple merge strategy - use LLM items as base and fill missing data from OCR
-        merged = llm_items.copy()
+                    # Calculate total including VAT
+                    data['total_incl_vat'] = data['total_excl_vat'] + data['total_vat']
 
-        # If LLM has fewer items than OCR, add missing ones
-        if len(ocr_items) > len(merged):
-            for i in range(len(merged), len(ocr_items)):
-                merged.append(ocr_items[i])
+            return data
 
-        # Fill missing data in existing items
-        for i, llm_item in enumerate(merged):
-            if i < len(ocr_items):
-                ocr_item = ocr_items[i]
+        except Exception as e:
+            logger.error(f"Error validating financial totals: {e}")
+            return data
 
-                # Fill missing quantities
-                if not llm_item.get("quantity") and ocr_item.get("quantity"):
-                    llm_item["quantity"] = ocr_item["quantity"]
-
-                # Fill missing prices
-                if not llm_item.get("unit_price") and ocr_item.get("unit_price"):
-                    llm_item["unit_price"] = ocr_item["unit_price"]
-
-                if not llm_item.get("total_price") and ocr_item.get("total_price"):
-                    llm_item["total_price"] = ocr_item["total_price"]
-
-        return merged
-
-    async def process_batch_upload(self, files: List[UploadFile]) -> List[Dict[str, Any]]:
-        """Process multiple uploaded files"""
-        results = []
-        temp_files = []
-
-        try:
-            # Save all files temporarily
-            for file in files:
-                temp_path = await save_temp_file(file, self.settings.temp_dir)
-                temp_files.append(temp_path)
-
-            # Process files
-            if len(temp_files) <= 5:  # Small batch - process concurrently
-                tasks = [self.process_invoice_file(path) for path in temp_files]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-            else:  # Large batch - process in chunks
-                results = await self._process_large_batch(temp_files)
-
-            # Convert exceptions to error dictionaries
-            processed_results = []
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    processed_results.append({
-                        "error": str(result),
-                        "file_index": i,
-                        "status": "failed"
-                    })
-                else:
-                    result["status"] = "success"
-                    processed_results.append(result)
-
-            return processed_results
-
-        finally:
-            # Cleanup all temp files
-            for temp_path in temp_files:
-                cleanup_temp_file(temp_path)
-
-    async def _process_large_batch(self, file_paths: List[str], chunk_size: int = 5) -> List[Dict[str, Any]]:
-        """Process large batch in chunks"""
-        results = []
-
-        for i in range(0, len(file_paths), chunk_size):
-            chunk = file_paths[i:i + chunk_size]
-            logger.info(f"Processing batch chunk {i//chunk_size + 1}/{(len(file_paths) + chunk_size - 1)//chunk_size}")
-
-            # Process chunk
-            tasks = [self.process_invoice_file(path) for path in chunk]
-            chunk_results = await asyncio.gather(*tasks, return_exceptions=True)
-            results.extend(chunk_results)
-
-            # Small delay between chunks to prevent resource exhaustion
-            await asyncio.sleep(0.1)
-
-        return results
-
-    async def get_model_status(self) -> Dict[str, Any]:
-        """Get status of loaded models"""
-        memory_info = monitor_memory_usage()
-
-        status = {
-            "ocr_engine": {
-                "engine": self.settings.ocr_engine,
-                "languages": self.settings.ocr_languages,
-                "status": "loaded" if self.ocr_engine else "not_loaded"
-            },
-            "llm_processor": {
-                "model_name": self.settings.model_name,
-                "quantization": self.settings.quantization,
-                "status": "loaded" if self.llm_processor else "not_loaded"
-            },
-            "table_extractor": {
-                "status": "loaded" if self.table_extractor else "not_loaded"
-            },
-            "memory": memory_info,
-            "system_status": "ready" if all([self.ocr_engine, self.llm_processor, self.table_extractor]) else "initializing"
+    def _calculate_quality_metrics(self, ocr_result: Dict, structured_data: Dict) -> Dict:
+        """Calculate quality metrics for the extraction"""
+        metrics = {
+            'ocr_confidence': ocr_result.get('avg_confidence', 0),
+            'text_elements_count': ocr_result.get('total_elements', 0),
+            'required_fields_present': 0,
+            'data_completeness': 0,
+            'overall_quality': 0
         }
 
-        if self.llm_processor:
-            status["llm_processor"].update(self.llm_processor.get_metrics())
+        # Check required fields
+        required_fields = ['invoice_id', 'issue_date', 'supplier', 'total_incl_vat']
+        present_fields = sum(1 for field in required_fields if structured_data.get(field))
+        metrics['required_fields_present'] = present_fields / len(required_fields)
+
+        # Calculate data completeness
+        all_fields = ['invoice_id', 'issue_date', 'supplier', 'customer', 'invoice_lines', 'total_incl_vat']
+        complete_fields = sum(1 for field in all_fields if structured_data.get(field))
+        metrics['data_completeness'] = complete_fields / len(all_fields)
+
+        # Overall quality score
+        metrics['overall_quality'] = (
+            metrics['ocr_confidence'] * 0.3 +
+            metrics['required_fields_present'] * 0.4 +
+            metrics['data_completeness'] * 0.3
+        )
+
+        return metrics
+
+    def _combine_page_results(self, page_results: List[Dict]) -> Dict:
+        """Combine results from multiple pages"""
+        if not page_results:
+            return {}
+
+        if len(page_results) == 1:
+            return page_results[0]['structured_data']
+
+        # For multi-page invoices, combine data intelligently
+        combined = page_results[0]['structured_data'].copy()
+
+        # Combine line items from all pages
+        all_line_items = []
+        for result in page_results:
+            line_items = result.get('structured_data', {}).get('invoice_lines', [])
+            all_line_items.extend(line_items)
+
+        combined['invoice_lines'] = all_line_items
+
+        # Recalculate totals
+        combined = self._validate_financial_totals(combined)
+
+        return combined
+
+    async def process_batch_upload(self, files: List[UploadFile]) -> List[Dict]:
+        """Process multiple invoice files"""
+        results = []
+
+        logger.info(f"Processing batch of {len(files)} files")
+
+        # Process files in parallel (limited concurrency)
+        semaphore = asyncio.Semaphore(3)  # Limit to 3 concurrent processes
+
+        async def process_single_file(file):
+            async with semaphore:
+                return await self.process_invoice_upload(file)
+
+        # Create tasks for all files
+        tasks = [process_single_file(file) for file in files]
+
+        # Execute with progress tracking
+        completed = 0
+        for task in asyncio.as_completed(tasks):
+            result = await task
+            results.append(result)
+            completed += 1
+            logger.info(f"Batch progress: {completed}/{len(files)} files processed")
+
+        logger.info(f"Batch processing completed: {len(results)} files processed")
+        return results
+
+    def _update_stats(self, success: bool, processing_time: float):
+        """Update processing statistics"""
+        self.stats['processed_count'] += 1
+        self.stats['total_processing_time'] += processing_time
+
+        if success:
+            self.stats['success_count'] += 1
+        else:
+            self.stats['error_count'] += 1
+
+        self.stats['avg_processing_time'] = (
+            self.stats['total_processing_time'] / self.stats['processed_count']
+        )
+
+    async def get_model_status(self) -> Dict:
+        """Get status of loaded models"""
+        status = {
+            'ocr_engine': {
+                'type': self.settings.ocr_engine,
+                'languages': self.settings.ocr_languages,
+                'initialized': self.ocr_engine is not None
+            },
+            'llm_model': {
+                'name': self.settings.model_name,
+                'quantization': self.settings.quantization,
+                'initialized': self.llm_processor is not None
+            },
+            'memory_usage': monitor_memory_usage()
+        }
 
         return status
 
-    async def get_metrics(self) -> Dict[str, Any]:
+    async def get_metrics(self) -> Dict:
         """Get processing metrics"""
-        avg_processing_time = (self.total_processing_time / self.total_processed
-                             if self.total_processed > 0 else 0)
-
-        success_rate = (self.successful_extractions / self.total_processed
-                       if self.total_processed > 0 else 0)
-
-        metrics = {
-            "processing_stats": {
-                "total_processed": self.total_processed,
-                "successful_extractions": self.successful_extractions,
-                "failed_extractions": self.failed_extractions,
-                "success_rate": round(success_rate * 100, 2),
-                "avg_processing_time": round(avg_processing_time, 2),
-                "total_processing_time": round(self.total_processing_time, 2)
-            },
-            "memory": monitor_memory_usage()
+        return {
+            'processing_stats': self.stats,
+            'system_metrics': monitor_memory_usage(),
+            'settings': {
+                'ocr_engine': self.settings.ocr_engine,
+                'model_name': self.settings.model_name,
+                'max_file_size': self.settings.max_file_size,
+                'max_batch_size': self.settings.max_batch_size
+            }
         }
-
-        if self.llm_processor:
-            metrics["llm_metrics"] = self.llm_processor.get_metrics()
-
-        return metrics
 
     async def cleanup(self):
         """Cleanup resources"""
@@ -342,11 +439,13 @@ class EuropeanInvoiceProcessor:
         if self.llm_processor:
             await self.llm_processor.cleanup()
 
-        # Clear memory
-        import gc
-        gc.collect()
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        # Clear any temporary files
+        temp_dir = Path(self.settings.temp_dir)
+        if temp_dir.exists():
+            for temp_file in temp_dir.glob("temp_*"):
+                try:
+                    temp_file.unlink()
+                except Exception:
+                    pass
 
         logger.info("Processor cleanup completed")
