@@ -60,12 +60,12 @@ htmlcov/
 docs/_build/
 
 # Docker
-.dockerignore
+# .dockerignore - We want to include this file in the repository
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
+poetry.lock
 # C extensions
 *.so
 

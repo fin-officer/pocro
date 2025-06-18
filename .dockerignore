@@ -1,0 +1,74 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+
+# Environment and local files
+.env
+.venv
+venv/
+ENV/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific (these are mounted as volumes)
+data/models/
+data/temp/
+data/output/
+logs/
+*.log
+
+# Build and distribution
+build/
+dist/
+*.egg-info/
+
+# Testing
+.coverage
+htmlcov/
+.tox/
+
+# Documentation
+docs/_build/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Docker Compose
+docker-compose.override.yml
+
+# Local development overrides
+local.env
+
+# Ignore everything except what we explicitly include
+**/*
+!pyproject.toml
+!poetry.lock
+!src/
+!configs/
+!scripts/
+!data/
+!data/README.md
+!Dockerfile
+!docker-compose.yml
+!README.md

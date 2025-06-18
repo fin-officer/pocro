@@ -1,11 +1,17 @@
 """
-OCR Engine with multiple backend support
+OCR Engine for invoice text extraction
 """
 import cv2
 import numpy as np
-import easyocr
 from typing import List, Tuple, Dict, Optional
 import logging
+from abc import ABC, abstractmethod
+
+try:
+    import easyocr
+    EASYOCR_AVAILABLE = True
+except ImportError:
+    EASYOCR_AVAILABLE = False
 
 try:
     from paddleocr import PaddleOCR
@@ -16,189 +22,296 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class OCRResult:
-    """OCR result container"""
+class OCREngine(ABC):
+    """Abstract base class for OCR engines"""
+    
+    @abstractmethod
+    def extract_text(self, image: np.ndarray) -> List[Dict]:
+        """Extract text from image"""
+        pass
+    
+    @abstractmethod
+    def extract_text_with_boxes(self, image: np.ndarray) -> List[Dict]:
+        """Extract text with bounding boxes"""
+        pass
 
-    def __init__(self, text: str, confidence: float, bbox: List[List[int]]):
-        self.text = text
-        self.confidence = confidence
-        self.bbox = bbox
 
-    def __repr__(self):
-        return f"OCRResult(text='{self.text}', confidence={self.confidence:.2f})"
-
-
-class MultilingualOCREngine:
-    """OCR engine with multiple backend support"""
-
-    def __init__(self, languages: List[str] = ["en", "de", "et"], engine: str = "easyocr"):
-        """
-        Initialize OCR engine
-
-        Args:
-            languages: List of language codes
-            engine: OCR engine to use ('easyocr' or 'paddleocr')
-        """
-        self.languages = languages
-        self.engine_type = engine
-        self.engine = None
-
-        self._initialize_engine()
-
-    def _initialize_engine(self):
-        """Initialize the OCR engine"""
-        if self.engine_type == "easyocr":
-            self._initialize_easyocr()
-        elif self.engine_type == "paddleocr":
-            self._initialize_paddleocr()
-        else:
-            raise ValueError(f"Unsupported OCR engine: {self.engine_type}")
-
-    def _initialize_easyocr(self):
-        """Initialize EasyOCR"""
+class EasyOCREngine(OCREngine):
+    """EasyOCR implementation"""
+    
+    def __init__(self, languages: List[str] = None):
+        if not EASYOCR_AVAILABLE:
+            raise ImportError("EasyOCR is not installed")
+        
+        self.languages = languages or ['en', 'de', 'et']
+        self.reader = easyocr.Reader(self.languages, gpu=True)
+        logger.info(f"EasyOCR initialized with languages: {self.languages}")
+    
+    def extract_text(self, image: np.ndarray) -> List[Dict]:
+        """Extract text from image using EasyOCR"""
         try:
-            self.engine = easyocr.Reader(
-                self.languages,
-                gpu=True,  # Will fallback to CPU if GPU not available
-                verbose=False
-            )
-            logger.info(f"EasyOCR initialized with languages: {self.languages}")
-        except Exception as e:
-            logger.error(f"Failed to initialize EasyOCR: {e}")
-            raise
-
-    def _initialize_paddleocr(self):
-        """Initialize PaddleOCR"""
-        if not PADDLEOCR_AVAILABLE:
-            raise ImportError("PaddleOCR not available. Install with: pip install paddleocr")
-
-        try:
-            # PaddleOCR uses different language codes
-            lang_map = {"en": "en", "de": "german", "et": "en"}  # Estonian falls back to English
-
-            self.engines = {}
-            for lang in self.languages:
-                paddle_lang = lang_map.get(lang, "en")
-                self.engines[lang] = PaddleOCR(
-                    use_angle_cls=True,
-                    lang=paddle_lang,
-                    show_log=False
-                )
-
-            logger.info(f"PaddleOCR initialized with languages: {self.languages}")
-        except Exception as e:
-            logger.error(f"Failed to initialize PaddleOCR: {e}")
-            raise
-
-    def extract_text(self, image: np.ndarray, detect_language: bool = True) -> Tuple[List[OCRResult], str]:
-        """
-        Extract text from image
-
-        Args:
-            image: Input image as numpy array
-            detect_language: Whether to detect language automatically
-
-        Returns:
-            Tuple of (OCR results, detected language)
-        """
-        if self.engine_type == "easyocr":
-            return self._extract_with_easyocr(image, detect_language)
-        elif self.engine_type == "paddleocr":
-            return self._extract_with_paddleocr(image, detect_language)
-
-    def _extract_with_easyocr(self, image: np.ndarray, detect_language: bool) -> Tuple[List[OCRResult], str]:
-        """Extract text using EasyOCR"""
-        try:
-            # Run OCR
-            results = self.engine.readtext(image, detail=1, paragraph=False)
-
-            # Convert to OCRResult objects
-            ocr_results = []
+            results = self.reader.readtext(image, detail=1, paragraph=False)
+            
+            extracted_text = []
             for bbox, text, confidence in results:
-                if confidence > 0.3:  # Filter low confidence results
-                    ocr_results.append(OCRResult(
-                        text=text.strip(),
-                        confidence=confidence,
-                        bbox=bbox
-                    ))
-
-            # Detect language if requested
-            detected_lang = "en"
-            if detect_language and ocr_results:
-                detected_lang = self._detect_language([r.text for r in ocr_results])
-
-            return ocr_results, detected_lang
-
+                if confidence > 0.3:  # Filter low confidence detections
+                    extracted_text.append({
+                        'text': text.strip(),
+                        'confidence': confidence,
+                        'bbox': bbox
+                    })
+            
+            logger.debug(f"EasyOCR extracted {len(extracted_text)} text elements")
+            return extracted_text
+            
         except Exception as e:
             logger.error(f"EasyOCR extraction failed: {e}")
-            return [], "en"
+            return []
+    
+    def extract_text_with_boxes(self, image: np.ndarray) -> List[Dict]:
+        """Extract text with detailed bounding box information"""
+        return self.extract_text(image)
 
-    def _extract_with_paddleocr(self, image: np.ndarray, detect_language: bool) -> Tuple[List[OCRResult], str]:
-        """Extract text using PaddleOCR"""
+
+class PaddleOCREngine(OCREngine):
+    """PaddleOCR implementation - better for tables"""
+    
+    def __init__(self, languages: List[str] = None):
+        if not PADDLEOCR_AVAILABLE:
+            raise ImportError("PaddleOCR is not installed")
+        
+        # PaddleOCR language mapping
+        lang_map = {
+            'en': 'en',
+            'de': 'german',
+            'et': 'es'  # Estonian not directly supported, use Spanish as fallback
+        }
+        
+        self.languages = languages or ['en']
+        self.primary_lang = lang_map.get(self.languages[0], 'en')
+        
+        self.ocr = PaddleOCR(
+            use_angle_cls=True,
+            lang=self.primary_lang,
+            use_gpu=True,
+            show_log=False
+        )
+        
+        logger.info(f"PaddleOCR initialized with language: {self.primary_lang}")
+    
+    def extract_text(self, image: np.ndarray) -> List[Dict]:
+        """Extract text from image using PaddleOCR"""
         try:
-            # Detect language first
-            detected_lang = "en"
-            if detect_language:
-                # Use English engine for language detection
-                temp_results = self.engines["en"].ocr(image, cls=True)
-                if temp_results and temp_results[0]:
-                    texts = [item[1][0] for item in temp_results[0] if item[1][1] > 0.3]
-                    detected_lang = self._detect_language(texts)
-
-            # Use appropriate engine
-            engine_lang = detected_lang if detected_lang in self.engines else "en"
-            results = self.engines[engine_lang].ocr(image, cls=True)
-
-            # Convert to OCRResult objects
-            ocr_results = []
+            results = self.ocr.ocr(image, cls=True)
+            
+            extracted_text = []
             if results and results[0]:
-                for item in results[0]:
-                    bbox, (text, confidence) = item
+                for line in results[0]:
+                    bbox, (text, confidence) = line
                     if confidence > 0.3:
-                        # Convert bbox format
-                        bbox_points = [[int(x), int(y)] for x, y in bbox]
-                        ocr_results.append(OCRResult(
-                            text=text.strip(),
-                            confidence=confidence,
-                            bbox=bbox_points
-                        ))
-
-            return ocr_results, detected_lang
-
+                        extracted_text.append({
+                            'text': text.strip(),
+                            'confidence': confidence,
+                            'bbox': bbox
+                        })
+            
+            logger.debug(f"PaddleOCR extracted {len(extracted_text)} text elements")
+            return extracted_text
+            
         except Exception as e:
             logger.error(f"PaddleOCR extraction failed: {e}")
-            return [], "en"
+            return []
+    
+    def extract_text_with_boxes(self, image: np.ndarray) -> List[Dict]:
+        """Extract text with detailed bounding box information"""
+        return self.extract_text(image)
 
-    def _detect_language(self, texts: List[str]) -> str:
-        """Simple language detection based on keywords"""
-        combined_text = " ".join(texts).lower()
 
-        # Language-specific keywords
-        language_keywords = {
-            "de": ["rechnung", "datum", "betrag", "mwst", "ust", "gesamt", "steuernummer", "euro"],
-            "et": ["arve", "kuupäev", "summa", "käibemaks", "kokku", "euro"],
-            "en": ["invoice", "date", "amount", "vat", "total", "tax", "number"]
+class InvoiceOCREngine:
+    """Main OCR engine for invoice processing"""
+    
+    def __init__(self, engine_type: str = "easyocr", languages: List[str] = None):
+        self.engine_type = engine_type.lower()
+        self.languages = languages or ['en', 'de', 'et']
+        
+        # Initialize OCR engine
+        if self.engine_type == "easyocr":
+            self.engine = EasyOCREngine(self.languages)
+        elif self.engine_type == "paddleocr":
+            self.engine = PaddleOCREngine(self.languages)
+        else:
+            raise ValueError(f"Unsupported OCR engine: {engine_type}")
+        
+        logger.info(f"Invoice OCR engine initialized: {engine_type}")
+    
+    def extract_invoice_text(self, image: np.ndarray) -> Dict:
+        """
+        Extract text from invoice image
+        
+        Args:
+            image: Preprocessed invoice image
+            
+        Returns:
+            Dictionary with extracted text and metadata
+        """
+        try:
+            # Extract text with bounding boxes
+            text_elements = self.engine.extract_text_with_boxes(image)
+            
+            # Sort by reading order (top to bottom, left to right)
+            sorted_elements = self._sort_reading_order(text_elements)
+            
+            # Combine into full text
+            full_text = self._combine_text_elements(sorted_elements)
+            
+            # Extract structured data
+            structured_data = self._structure_text_data(sorted_elements)
+            
+            return {
+                'full_text': full_text,
+                'text_elements': sorted_elements,
+                'structured_data': structured_data,
+                'total_elements': len(text_elements),
+                'avg_confidence': np.mean([elem['confidence'] for elem in text_elements]) if text_elements else 0
+            }
+            
+        except Exception as e:
+            logger.error(f"Invoice text extraction failed: {e}")
+            return {
+                'full_text': '',
+                'text_elements': [],
+                'structured_data': {},
+                'total_elements': 0,
+                'avg_confidence': 0
+            }
+    
+    def _sort_reading_order(self, text_elements: List[Dict]) -> List[Dict]:
+        """Sort text elements in reading order"""
+        # Sort by Y coordinate first (top to bottom), then X coordinate (left to right)
+        return sorted(text_elements, key=lambda x: (self._get_y_center(x['bbox']), self._get_x_center(x['bbox'])))
+    
+    def _get_y_center(self, bbox) -> float:
+        """Get Y center of bounding box"""
+        if isinstance(bbox[0], list):
+            # EasyOCR format: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+            return sum(point[1] for point in bbox) / 4
+        else:
+            # PaddleOCR format: [x1, y1, x2, y2]
+            return (bbox[1] + bbox[3]) / 2
+    
+    def _get_x_center(self, bbox) -> float:
+        """Get X center of bounding box"""
+        if isinstance(bbox[0], list):
+            # EasyOCR format
+            return sum(point[0] for point in bbox) / 4
+        else:
+            # PaddleOCR format
+            return (bbox[0] + bbox[2]) / 2
+    
+    def _combine_text_elements(self, text_elements: List[Dict]) -> str:
+        """Combine text elements into full text with proper spacing"""
+        if not text_elements:
+            return ""
+        
+        full_text = ""
+        last_y = None
+        
+        for element in text_elements:
+            text = element['text']
+            y_pos = self._get_y_center(element['bbox'])
+            
+            # Add newline if we're on a new line (significant Y difference)
+            if last_y is not None and abs(y_pos - last_y) > 10:
+                full_text += "\n"
+            elif full_text and not full_text.endswith(" "):
+                full_text += " "
+            
+            full_text += text
+            last_y = y_pos
+        
+        return full_text.strip()
+    
+    def _structure_text_data(self, text_elements: List[Dict]) -> Dict:
+        """Extract structured data from text elements"""
+        structured = {
+            'lines': [],
+            'potential_tables': [],
+            'headers': [],
+            'amounts': []
         }
-
-        # Count keyword matches
+        
+        current_line = []
+        last_y = None
+        line_tolerance = 15  # pixels
+        
+        for element in text_elements:
+            y_pos = self._get_y_center(element['bbox'])
+            
+            # Group elements into lines
+            if last_y is None or abs(y_pos - last_y) <= line_tolerance:
+                current_line.append(element)
+            else:
+                if current_line:
+                    structured['lines'].append(current_line)
+                current_line = [element]
+            
+            last_y = y_pos
+            
+            # Identify potential amounts
+            text = element['text']
+            if self._is_amount(text):
+                structured['amounts'].append(element)
+            
+            # Identify potential headers (high confidence, short text)
+            if element['confidence'] > 0.9 and len(text.split()) <= 3:
+                structured['headers'].append(element)
+        
+        # Add last line
+        if current_line:
+            structured['lines'].append(current_line)
+        
+        return structured
+    
+    def _is_amount(self, text: str) -> bool:
+        """Check if text represents a monetary amount"""
+        import re
+        
+        # Patterns for amounts in different formats
+        amount_patterns = [
+            r'[€$£]\s*\d+[.,]\d{2}',  # €123.45, $123,45
+            r'\d+[.,]\d{2}\s*[€$£]',  # 123.45€, 123,45$
+            r'\d{1,3}(?:[.,]\d{3})*[.,]\d{2}',  # 1,234.56 or 1.234,56
+        ]
+        
+        for pattern in amount_patterns:
+            if re.search(pattern, text):
+                return True
+        
+        return False
+    
+    def detect_language(self, text_elements: List[Dict]) -> str:
+        """Detect primary language from extracted text"""
+        if not text_elements:
+            return 'en'
+        
+        # Combine all text
+        all_text = ' '.join([elem['text'] for elem in text_elements]).lower()
+        
+        # Language keywords
+        language_keywords = {
+            'de': ['rechnung', 'datum', 'betrag', 'mwst', 'ust', 'gesamt', 'summe', 'netto', 'brutto'],
+            'et': ['arve', 'kuupäev', 'summa', 'käibemaks', 'kokku', 'maksukohustuslane'],
+            'en': ['invoice', 'date', 'amount', 'vat', 'total', 'subtotal', 'tax']
+        }
+        
+        # Count matches for each language
         scores = {}
         for lang, keywords in language_keywords.items():
-            if lang in self.languages:
-                score = sum(1 for keyword in keywords if keyword in combined_text)
-                scores[lang] = score
-
+            score = sum(1 for keyword in keywords if keyword in all_text)
+            scores[lang] = score
+        
         # Return language with highest score
-        if scores:
-            detected = max(scores, key=scores.get)
-            if scores[detected] > 0:
-                return detected
-
-        return "en"  # Default fallback
-
-    def get_full_text(self, ocr_results: List[OCRResult]) -> str:
-        """Combine OCR results into full text"""
-        return " ".join([result.text for result in ocr_results])
-
-    def filter_by_confidence(self, ocr_results: List[OCRResult], min_confidence: float = 0.5) -> List[OCRResult]:
-        """Filter OCR results by confidence threshold"""
-        return [result for result in ocr_results if result.confidence >= min_confidence]
+        detected_lang = max(scores, key=scores.get) if scores else 'en'
+        logger.info(f"Detected language: {detected_lang} (scores: {scores})")
+        
+        return detected_lang
