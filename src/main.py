@@ -155,10 +155,12 @@ async def get_metrics():
     return await processor.get_metrics()
 
 if __name__ == "__main__":
+    import os
+    port = int(os.getenv("PORT", "8005"))
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8000,
+        port=port,
         reload=False,
         log_level="info"
     )

@@ -15,7 +15,7 @@ services:
       - ./data/output:/app/data/output
       - ./logs:/app/logs
     ports:
-      - "8000:8000"
+      - "8005:8000"
     # Enable for debugging
     # command: ["sleep", "infinity"]
     # entrypoint: ["/bin/bash"]

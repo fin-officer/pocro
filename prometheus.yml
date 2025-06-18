@@ -9,7 +9,7 @@ scrape_configs:
 
   - job_name: 'invoice-ocr'
     static_configs:
-      - targets: ['invoice-ocr:8000']
+      - targets: ['invoice-ocr:8005']
 
   - job_name: 'redis'
     static_configs:

@@ -31,21 +31,26 @@ def event_loop():
     loop.close()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def temp_dir() -> Generator[Path, None, None]:
-    """Create temporary directory for tests"""
-    temp_path = Path(tempfile.mkdtemp())
+    """Create a temporary directory for tests (session-scoped)"""
+    temp_path = Path(tempfile.mkdtemp(prefix="pocro_test_"))
     yield temp_path
+    # Cleanup
     shutil.rmtree(temp_path, ignore_errors=True)
 
 
-@pytest.fixture
-def test_settings(temp_dir: Path, monkeypatch) -> Settings:
+@pytest.fixture(scope="session")
+def test_settings(temp_dir: Path, monkeypatch_session) -> Settings:
     """Test settings with temporary directories"""
     # Set environment variables for settings that require special handling
-    monkeypatch.setenv("OCR_LANGUAGES", "en,de,et")
+    monkeypatch_session.setenv("OCR_LANGUAGES", "en,de,et")
     
-    return Settings(
+    # Import Settings here after setting the environment variables
+    from src.config.settings import Settings
+    
+    # Create settings instance with test-specific values
+    settings = Settings(
         environment="test",
         debug=True,
         model_cache_dir=str(temp_dir / "models"),
@@ -58,6 +63,12 @@ def test_settings(temp_dir: Path, monkeypatch) -> Settings:
         max_file_size=10 * 1024 * 1024,  # 10MB for tests
         max_batch_size=5
     )
+    
+    # Verify ocr_languages was parsed correctly
+    assert settings.ocr_languages == ["en", "de", "et"], \
+        f"Failed to parse OCR_LANGUAGES. Got: {settings.ocr_languages}"
+    
+    return settings
 
 
 @pytest.fixture
@@ -516,18 +527,35 @@ def ocr_engine(request):
 
 
 # Utility functions for tests
-def create_test_upload_file(filename: str, content: bytes, content_type: str = "application/octet-stream"):
-    """Create test upload file"""
+@pytest.fixture
+def create_test_upload_file(monkeypatch):
+    """Create a test upload file"""
     from fastapi import UploadFile
     from io import BytesIO
+    from unittest.mock import MagicMock
     
-    upload_file = UploadFile(
-        filename=filename,
-        file=BytesIO(content)
-    )
-    # Set content_type as an attribute since it's not a constructor parameter in this FastAPI version
-    upload_file.content_type = content_type
-    return upload_file
+    def _create_test_upload_file(
+        filename: str = "test_file.pdf",
+        content: bytes = b"test content",
+        content_type: str = "application/pdf"
+    ) -> UploadFile:
+        # Create a simple mock that behaves like UploadFile
+        mock_file = MagicMock(spec=UploadFile)
+        mock_file.filename = filename
+        mock_file.file = BytesIO(content)
+        mock_file.content_type = content_type
+        
+        # Mock the required methods
+        async def async_read(size: int = -1) -> bytes:
+            return content[:size] if size > 0 else content
+            
+        mock_file.read = async_read
+        mock_file.__aenter__.return_value = mock_file
+        mock_file.__aexit__.return_value = None
+        
+        return mock_file
+    
+    return _create_test_upload_file
 
 
 def assert_valid_invoice_data(data: Dict[str, Any]):

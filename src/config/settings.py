@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     
     # Server settings
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = int(os.getenv("PORT", "8005"))
     workers: int = 1
     
     # GPU settings
@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     output_dir: str = "./data/output"
     
     # Database settings
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = "redis://localhost:63790/0"
     
     # Monitoring
     enable_metrics: bool = True

@@ -17,7 +17,7 @@ services:
       - ENVIRONMENT=development
       - LOG_LEVEL=DEBUG
       - RELOAD=true
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8005 --reload
     deploy:
       resources:
         reservations:
