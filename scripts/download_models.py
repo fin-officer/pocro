@@ -13,9 +13,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 
 MODELS = {
-    "mistral-7b-instruct": "mistralai/Mistral-7B-Instruct-v0.1",
-    "qwen2.5-7b": "Qwen/Qwen2.5-7B-Instruct",
-    "llama-3.1-8b": "meta-llama/Llama-3.1-8B-Instruct"
+    "mistral-7b": "mistralai/Mistral-7B-v0.1",  # Open-access base model
+    "tinyllama": "TinyLlama/TinyLlama-1.1B-Chat-v1.0"  # Small, open model for testing
 }
 
 def download_model(model_name: str, model_id: str, cache_dir: str):
