@@ -1,4 +1,4 @@
-# procr
+# pocro
 
 
 ## Kluczowe funkcjonalności:
@@ -16,8 +16,8 @@
 
 ```bash
 # 1. Klonowanie i setup
-git clone git@github.com:fin-officer/procr.git
-cd procr
+git clone git@github.com:fin-officer/pocro.git
+cd pocro
 cp .env.example .env
 
 # 2. Instalacja zależności produkcyjnych
@@ -57,7 +57,7 @@ make benchmark
 ## Struktura projektu
 
 ```
-procr/
+pocro/
 ├── README.md
 ├── requirements.txt
 ├── requirements-dev.txt

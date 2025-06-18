@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "[procr] Universal setup script - Linux distribution autodetect"
+echo "[pocro] Universal setup script - Linux distribution autodetect"
 
 # Detect distro
 if [ -f /etc/os-release ]; then
@@ -65,4 +65,4 @@ if [ -f scripts/validate_installation.py ]; then
     python3 scripts/validate_installation.py || true
 fi
 
-echo "[procr] Setup complete!"
+echo "[pocro] Setup complete!"
