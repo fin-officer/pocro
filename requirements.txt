@@ -1,16 +1,16 @@
 # Core dependencies
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.0
-python-multipart==0.0.6
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+python-multipart>=0.0.6
 
 # OCR and Image Processing
-easyocr==1.7.0
-paddleocr==2.6.1.3  # Downgraded to be compatible with PyMuPDF
-opencv-python==4.6.0.66
-pdf2image==1.16.3
-PyMuPDF==1.20.2  # Version compatible with paddleocr
-Pillow==10.1.0
+easyocr>=1.7.0
+paddleocr>=2.6.1.3
+opencv-python>=4.6.0.66
+pdf2image>=1.16.3
+PyMuPDF>=1.20.2
+Pillow>=10.0.0
 
 # LLM and ML
 transformers>=4.39.1

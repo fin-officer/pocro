@@ -5,7 +5,6 @@ import asyncio
 import tempfile
 from pathlib import Path
 from typing import Generator
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -54,15 +53,31 @@ def client() -> TestClient:
 
 
 @pytest.fixture
-def sample_invoice_pdf() -> Path:
-    """Path to sample invoice PDF"""
-    return Path(__file__).parent / "fixtures" / "sample_invoices" / "german_invoice.pdf"
-
-
-@pytest.fixture
-def sample_invoice_image() -> Path:
-    """Path to sample invoice image"""
-    return Path(__file__).parent / "fixtures" / "sample_invoices" / "english_invoice.jpg"
+def sample_invoice_text() -> str:
+    """Sample invoice text for testing"""
+    return """
+    RECHNUNG
+    
+    Musterfirma GmbH
+    Musterstraße 1
+    10115 Berlin
+    USt-ID: DE123456789
+    
+    Rechnungsnummer: RE-2024-001
+    Datum: 15.01.2024
+    
+    Kunde AG
+    Kundenstraße 10
+    20095 Hamburg
+    
+    Pos. Beschreibung           Menge  Preis    Gesamt
+    1    Beratungsleistung        10    100,00   1.000,00
+    2    Software-Lizenz           1    500,00     500,00
+    
+    Netto:                                     1.500,00 EUR
+    MwSt. 19%:                                   285,00 EUR
+    Gesamt:                                    1.785,00 EUR
+    """
 
 
 @pytest.fixture
@@ -74,9 +89,12 @@ def expected_german_output() -> dict:
         "currency_code": "EUR",
         "supplier": {
             "name": "Musterfirma GmbH",
-            "vat_id": "DE123456789",
-            "country_code": "DE"
+            "vat_id": "DE123456789"
         },
-        "total_incl_vat": 119.00,
-        "total_vat": 19.00
+        "customer": {
+            "name": "Kunde AG"
+        },
+        "total_excl_vat": 1500.00,
+        "total_vat": 285.00,
+        "total_incl_vat": 1785.00
     }
