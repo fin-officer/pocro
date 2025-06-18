@@ -2,7 +2,7 @@ services:
   invoice-ocr:
     build:
       args:
-        - PYTHON_VERSION=3.10
+        - PYTHON_VERSION=3.8
     environment:
       - LOG_LEVEL=DEBUG
       - PYTHONUNBUFFERED=1

@@ -40,8 +40,11 @@ def temp_dir() -> Generator[Path, None, None]:
 
 
 @pytest.fixture
-def test_settings(temp_dir: Path) -> Settings:
+def test_settings(temp_dir: Path, monkeypatch) -> Settings:
     """Test settings with temporary directories"""
+    # Set environment variables for settings that require special handling
+    monkeypatch.setenv("OCR_LANGUAGES", "en,de,et")
+    
     return Settings(
         environment="test",
         debug=True,
@@ -52,7 +55,6 @@ def test_settings(temp_dir: Path) -> Settings:
         enable_metrics=False,
         log_level="DEBUG",
         ocr_engine="easyocr",
-        ocr_languages=["en", "de", "et"],
         max_file_size=10 * 1024 * 1024,  # 10MB for tests
         max_batch_size=5
     )

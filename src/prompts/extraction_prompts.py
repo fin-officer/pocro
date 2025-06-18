@@ -3,7 +3,7 @@ LLM prompts for invoice data extraction
 """
 import json
 from typing import Dict, Any
-from models.invoice_schema import InvoiceData
+from src.models.invoice_schema import InvoiceData
 
 
 def get_extraction_prompt(invoice_text: str, detected_language: str = "en") -> str:

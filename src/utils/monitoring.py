@@ -4,7 +4,7 @@ System monitoring and metrics utilities
 import time
 import psutil
 import logging
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, List
 from functools import wraps
 from datetime import datetime, timedelta
 import json

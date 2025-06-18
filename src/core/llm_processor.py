@@ -17,7 +17,7 @@ except ImportError:
     VLLM_AVAILABLE = False
 
 from ..models.invoice_schema import InvoiceData
-from ..prompts.extraction_prompts import create_multilingual_prompt
+from ..prompts.extraction_prompts import get_extraction_prompt
 
 logger = logging.getLogger(__name__)
 

@@ -11,10 +11,10 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from config.settings import Settings
-from core.pipeline import EuropeanInvoiceProcessor
-from models.invoice_schema import InvoiceData
-from utils.monitoring import monitor_memory_usage
+from src.config.settings import Settings
+from src.core.pipeline import EuropeanInvoiceProcessor
+from src.models.invoice_schema import InvoiceData
+from src.utils.monitoring import monitor_memory_usage
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

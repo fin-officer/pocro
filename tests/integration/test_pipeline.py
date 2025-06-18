@@ -11,7 +11,7 @@ from typing import List, Dict, Any
 
 from src.core.pipeline import EuropeanInvoiceProcessor
 from src.config.settings import Settings
-from conftest import assert_valid_invoice_data
+from ..conftest import assert_valid_invoice_data
 
 
 class TestPipelineIntegration:

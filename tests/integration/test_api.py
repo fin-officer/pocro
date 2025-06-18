@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 
 from src.main import app
-from conftest import create_test_upload_file, assert_valid_invoice_data
+from ..conftest import create_test_upload_file, assert_valid_invoice_data
 
 
 class TestAPIIntegration:

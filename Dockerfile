@@ -1,5 +1,5 @@
-# Use CUDA base image
-FROM nvidia/cuda:11.8.0-devel-ubuntu20.04
+# Use Python 3.10 base image
+FROM python:3.10-slim
 
 # Set build arguments
 ARG PYTHON_VERSION=3.10
@@ -20,15 +20,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Set timezone
 ENV TZ=Europe/Berlin
 
-# Set Python version
-ENV PYTHON_VERSION=${PYTHON_VERSION}
-
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python${PYTHON_VERSION} \
-    python${PYTHON_VERSION}-dev \
-    python3-pip \
-    python${PYTHON_VERSION}-venv \
     poppler-utils \
     tesseract-ocr \
     tesseract-ocr-deu \
@@ -49,11 +42,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Python version alternatives
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 && \
-    update-alternatives --install /usr/bin/python python /usr/bin/python3 1 && \
-    update-alternatives --install /usr/bin/pip3 pip3 /usr/bin/pip3 1 && \
-    update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+# Create symlinks for Python
+RUN ln -sf /usr/local/bin/python3 /usr/local/bin/python && \
+    ln -sf /usr/local/bin/pip3 /usr/local/bin/pip
 
 # Install Poetry
 RUN curl -sSL https://install.python-poetry.org | python3 - && \
@@ -67,12 +58,11 @@ WORKDIR /app
 # Copy project files
 COPY pyproject.toml poetry.lock* ./
 
-
 # Install Python dependencies using Poetry
 RUN poetry install --no-interaction --no-ansi --no-root --only main
 
-# Install PyTorch with CUDA support
-RUN pip3 install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu118
+# Install PyTorch with CUDA 11.8 support
+RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 # Copy application code and configuration
 COPY src/ ./src/
