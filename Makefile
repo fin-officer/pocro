@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test test-cov lint format clean build run docker-build docker-run
+.PHONY: help install install-dev test test-cov lint format clean build run docker-build docker-run publish
 
 # Default target
 help:
@@ -54,6 +54,13 @@ build:
 
 run:
 	python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Publishing
+publish:
+	@echo "Building package..."
+	poetry build
+	@echo "\nTo upload to PyPI, run:"
+	@echo "poetry publish"
 
 # Docker commands
 docker-build:
