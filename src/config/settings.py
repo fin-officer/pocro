@@ -58,11 +58,19 @@ class Settings(BaseSettings):
         Path(v).mkdir(parents=True, exist_ok=True)
         return v
     
-    @validator("ocr_languages")
+    @validator("ocr_languages", pre=True)
     def validate_languages(cls, v):
         """Validate OCR languages"""
+        if isinstance(v, str):
+            # Handle case where value comes from environment variable as comma-separated string
+            v = [lang.strip() for lang in v.split(",") if lang.strip()]
+        
         supported = ["en", "de", "et", "fr", "es", "it", "nl"]
         for lang in v:
             if lang not in supported:
                 raise ValueError(f"Unsupported language: {lang}")
         return v
+        
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"

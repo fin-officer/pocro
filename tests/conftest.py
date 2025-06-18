@@ -521,11 +521,13 @@ def create_test_upload_file(filename: str, content: bytes, content_type: str = "
     from fastapi import UploadFile
     from io import BytesIO
     
-    return UploadFile(
+    upload_file = UploadFile(
         filename=filename,
-        file=BytesIO(content),
-        content_type=content_type
+        file=BytesIO(content)
     )
+    # Set content_type as an attribute since it's not a constructor parameter in this FastAPI version
+    upload_file.content_type = content_type
+    return upload_file
 
 
 def assert_valid_invoice_data(data: Dict[str, Any]):
