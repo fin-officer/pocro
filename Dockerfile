@@ -12,10 +12,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_DEFAULT_TIMEOUT=100 \
-    POETRY_VERSION=1.8.2 \
+    POETRY_VERSION=1.6.1 \
     POETRY_HOME="/opt/poetry" \
     POETRY_VIRTUALENVS_CREATE=false \
-    PYTHONPATH="/app/src"
+    POETRY_NO_INTERACTION=1 \
+    POETRY_CACHE_DIR='/var/cache/pypoetry' \
+    PATH="$POETRY_HOME/bin:$PATH"
 
 # Set timezone
 ENV TZ=Europe/Berlin
@@ -65,10 +67,12 @@ RUN poetry install --no-interaction --no-ansi --no-root --only main
 RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 # Copy application code and configuration
-COPY . .
+COPY src/ ./src/
+COPY pyproject.toml poetry.lock ./
+COPY entrypoint.sh /app/entrypoint.sh
 
-# Install the package in development mode
-RUN pip install -e .
+# Install the package using Poetry
+RUN poetry install --no-interaction --no-ansi --only main
 
 # Create necessary directories with correct permissions
 RUN mkdir -p /app/data/models /app/data/temp /app/data/output /app/logs && \
@@ -90,13 +94,16 @@ USER invoiceuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8005/health || exit 1
 
 # Expose port
 EXPOSE 8000
 
+# Set the entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"]
+
 # Set the working directory to the app directory
 WORKDIR /app/src
 
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# Set the command to run the application
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8005", "--reload", "--workers", "1"]
