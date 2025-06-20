@@ -576,11 +576,32 @@ def assert_valid_invoice_data(data: Dict[str, Any]):
         assert abs(expected_total - actual_total) < 0.01, "Total calculation mismatch"
 
 
+@pytest.fixture(scope="session", autouse=True)
+def download_ocr_models():
+    """Download OCR models before running tests"""
+    try:
+        # Download EasyOCR models
+        import easyocr
+        reader = easyocr.Reader(['en', 'de', 'et'])
+        del reader
+    except Exception as e:
+        print(f"Warning: Could not download EasyOCR models: {e}")
+    
+    try:
+        # Download PaddleOCR models
+        from paddleocr import PaddleOCR
+        ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
+        del ocr
+    except Exception as e:
+        print(f"Warning: Could not download PaddleOCR models: {e}")
+
+
 # Mark slow tests
 def pytest_configure(config):
     """Configure pytest markers"""
     config.addinivalue_line(
-        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
+        "markers",
+        "slow: mark test as slow to run (deselect with '-m \"not slow\"')"
     )
     config.addinivalue_line(
         "markers", "integration: marks tests as integration tests"

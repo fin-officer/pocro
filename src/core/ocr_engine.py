@@ -305,13 +305,21 @@ class InvoiceOCREngine:
         }
         
         # Count matches for each language
-        scores = {}
+        scores = {lang: 0 for lang in language_keywords}
         for lang, keywords in language_keywords.items():
             score = sum(1 for keyword in keywords if keyword in all_text)
             scores[lang] = score
         
-        # Return language with highest score
-        detected_lang = max(scores, key=scores.get) if scores else 'en'
+        # Get the language with the highest score
+        max_score = max(scores.values())
+        
+        # If no keywords were found, default to English
+        if max_score == 0:
+            logger.info("No language keywords found, defaulting to English")
+            return 'en'
+            
+        # Return the language with the highest score
+        detected_lang = max(scores, key=scores.get)
         logger.info(f"Detected language: {detected_lang} (scores: {scores})")
         
         return detected_lang

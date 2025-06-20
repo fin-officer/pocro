@@ -255,13 +255,14 @@ class TestInvoiceOCREngine:
                 language = engine.detect_language(estonian_elements)
                 assert language == 'et'
                 
-                # Unknown text (should default to English)
+                # Unknown text (should return language with highest score, which might be 0)
                 unknown_elements = [
                     {'text': 'xyz', 'confidence': 0.9},
                     {'text': 'abc', 'confidence': 0.9}
                 ]
                 
                 language = engine.detect_language(unknown_elements)
+                # Should return 'en' as the default language when no keywords are found
                 assert language == 'en'
 
 
@@ -469,8 +470,14 @@ class TestOCREngineIntegration:
                 assert result is not None
                 assert processing_time < 10.0  # Should complete within 10 seconds for mock
     
-    @pytest.mark.parametrize("confidence_threshold", [0.1, 0.3, 0.5, 0.7, 0.9])
-    def test_confidence_filtering(self, confidence_threshold):
+    @pytest.mark.parametrize("confidence_threshold, expected_count", [
+        (0.1, 2),  # 0.95, 0.6 > 0.3 (EasyOCR's threshold); 0.2 is filtered out
+        (0.3, 2),  # 0.95, 0.6 > 0.3; 0.2 is filtered out
+        (0.5, 2),  # 0.95, 0.6 > 0.5; 0.2 is filtered out
+        (0.7, 1),  # 0.95 > 0.7; 0.6 is filtered; 0.2 is filtered out
+        (0.9, 1)   # 0.95 > 0.9; 0.6 is filtered; 0.2 is filtered out
+    ])
+    def test_confidence_filtering(self, confidence_threshold, expected_count):
         """Test confidence filtering with different thresholds"""
         with patch('src.core.ocr_engine.EASYOCR_AVAILABLE', True):
             with patch('src.core.ocr_engine.easyocr.Reader') as mock_reader:
@@ -482,21 +489,27 @@ class TestOCREngineIntegration:
                 ]
                 mock_reader.return_value = mock_reader_instance
                 
-                # Temporarily modify confidence threshold
+                # Create engine with mock
                 engine = InvoiceOCREngine(engine_type="easyocr")
                 
-                # Mock the confidence filtering by modifying the extracted results
+                # Mock the extract_text method to apply our threshold
                 original_extract = engine.engine.extract_text
                 
                 def mock_extract_with_threshold(image):
+                    # First apply the original extract which has the 0.3 threshold
                     results = original_extract(image)
+                    # Then apply our test threshold
                     return [r for r in results if r['confidence'] > confidence_threshold]
                 
+                # Replace the extract_text method with our mock
                 engine.engine.extract_text = mock_extract_with_threshold
                 
+                # Create a sample image
                 sample_image = np.ones((100, 100, 3), dtype=np.uint8) * 255
+                
+                # Extract text with our mocked method
                 result = engine.extract_invoice_text(sample_image)
                 
-                # Count expected results based on threshold
-                expected_count = sum(1 for conf in [0.95, 0.6, 0.2] if conf > confidence_threshold)
-                assert result['total_elements'] == expected_count
+                # Verify the number of elements matches our expectation
+                assert result['total_elements'] == expected_count, \
+                    f"Expected {expected_count} elements with confidence > {confidence_threshold}, got {result['total_elements']}"

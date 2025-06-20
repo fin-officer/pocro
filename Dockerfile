@@ -72,10 +72,26 @@ RUN pip3 install --no-cache-dir torch==2.0.1+cu118 torchvision==0.15.2+cu118 tor
 RUN python3 -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
 
 # Install additional CUDA libraries
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    apt-get install -y --allow-downgrades --allow-change-held-packages --no-install-recommends \
+    libcublas-11-8=11.11.3.6-1 \
+    libcublas-dev-11-8=11.11.3.6-1 \
+    libcufft-11-8=10.9.0.58-1 \
+    libcufft-dev-11-8=10.9.0.58-1 \
     libcudnn8=8.9.2.*-1+cuda11.8 \
     libcudnn8-dev=8.9.2.*-1+cuda11.8 \
     && rm -rf /var/lib/apt/lists/*
+
+# Set up environment variables for CUDA
+ENV LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:/usr/local/cuda-11.8/targets/x86_64-linux/lib:$LD_LIBRARY_PATH \
+    PATH=/usr/local/cuda-11.8/bin:$PATH \
+    CUDA_HOME=/usr/local/cuda-11.8
+
+# Create symbolic links for CUDA libraries
+RUN ln -s /usr/local/cuda-11.8/targets/x86_64-linux/lib/libcufft.so.10 /usr/local/cuda-11.8/targets/x86_64-linux/lib/libcufft.so.11 && \
+    ln -s /usr/local/cuda-11.8/targets/x86_64-linux/lib/libcublas.so.11 /usr/local/cuda-11.8/targets/x86_64-linux/lib/libcublas.so.11.11.3.6 && \
+    ln -s /usr/local/cuda-11.8/targets/x86_64-linux/lib/libcublasLt.so.11 /usr/local/cuda-11.8/targets/x86_64-linux/lib/libcublasLt.so.11.11.3.6 && \
+    ldconfig
 
 # Create a README.md file to prevent poetry install errors
 RUN touch /app/README.md
