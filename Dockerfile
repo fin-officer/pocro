@@ -1,5 +1,5 @@
-# Use Python 3.10 base image
-FROM python:3.10-slim
+# Use full CUDA toolkit image with Python 3.10
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 # Set build arguments
 ARG PYTHON_VERSION=3.10
@@ -42,11 +42,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     curl \
     git \
+    python3-pip \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create symlinks for Python
-RUN ln -sf /usr/local/bin/python3 /usr/local/bin/python && \
-    ln -sf /usr/local/bin/pip3 /usr/local/bin/pip
+RUN ln -sf /usr/bin/python3 /usr/bin/python && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip
 
 # Install Poetry
 RUN curl -sSL https://install.python-poetry.org | python3 - && \
@@ -64,7 +66,16 @@ COPY pyproject.toml poetry.lock* ./
 RUN poetry install --no-interaction --no-ansi --no-root --only main
 
 # Install PyTorch with CUDA 11.8 support
-RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+RUN pip3 install --no-cache-dir torch==2.0.1+cu118 torchvision==0.15.2+cu118 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
+
+# Verify CUDA is available
+RUN python3 -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+
+# Install additional CUDA libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcudnn8=8.9.2.*-1+cuda11.8 \
+    libcudnn8-dev=8.9.2.*-1+cuda11.8 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create a README.md file to prevent poetry install errors
 RUN touch /app/README.md
