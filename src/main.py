@@ -11,7 +11,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .config.settings import Settings
+from .config.settings import AppSettings as Settings
 from .core.pipeline import EuropeanInvoiceProcessor
 from .models.invoice_schema import InvoiceData
 from .utils.monitoring import monitor_memory_usage

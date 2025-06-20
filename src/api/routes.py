@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
 from api.dependencies import get_processor, get_settings, rate_limit
-from config.settings import Settings
+from config.settings import AppSettings as Settings
 from core.pipeline import EuropeanInvoiceProcessor
 from models.invoice_schema import InvoiceData, InvoiceBatch, InvoiceValidationResult
 from models.validation import validate_invoice_data

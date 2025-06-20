@@ -13,7 +13,7 @@ import cv2
 from PIL import Image
 from fastapi import UploadFile
 
-from src.config.settings import Settings
+from src.config.settings import AppSettings as Settings
 from src.core.preprocessor import InvoicePreprocessor
 from src.core.ocr_engine import InvoiceOCREngine
 from src.core.table_extractor import InvoiceTableExtractor

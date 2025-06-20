@@ -10,7 +10,7 @@ from collections import defaultdict, deque
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from config.settings import Settings
+from config.settings import AppSettings as Settings
 from core.pipeline import EuropeanInvoiceProcessor
 
 logger = logging.getLogger(__name__)
