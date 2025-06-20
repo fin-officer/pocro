@@ -50,7 +50,12 @@ clean:
 
 # Local development
 build:
-	python setup.py build
+	poetry version patch
+	poetry build
+
+publish: build
+	@echo "Publishing package to PyPI..."
+	poetry publish
 
 run:
 	python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
