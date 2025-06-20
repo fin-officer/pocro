@@ -66,10 +66,16 @@ RUN poetry install --no-interaction --no-ansi --no-root --only main
 # Install PyTorch with CUDA 11.8 support
 RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
+# Create a README.md file to prevent poetry install errors
+RUN touch /app/README.md
+
 # Copy application code and configuration
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 COPY pyproject.toml poetry.lock ./
-COPY entrypoint.sh /app/entrypoint.sh
+
+# Ensure the start script is executable
+RUN chmod +x /app/scripts/start.sh
 
 # Install the package using Poetry
 RUN poetry install --no-interaction --no-ansi --only main
@@ -100,7 +106,7 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
 EXPOSE 8000
 
 # Set the entrypoint
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["/app/scripts/start.sh"]
 
 # Set the working directory to the app directory
 WORKDIR /app/src
