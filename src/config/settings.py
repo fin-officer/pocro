@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional
 
 from dotenv import load_dotenv
-from pydantic import BaseSettings, Field, validator
+from pydantic import Field, validator
+from pydantic_settings import BaseSettings
 
 # Load environment variables from .env file
 load_dotenv()

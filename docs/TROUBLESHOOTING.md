@@ -54,7 +54,7 @@ This guide provides solutions to common issues you might encounter while using t
 
 ### Port Already in Use
 
-**Symptom**: Error about port 8000 (or your configured port) being in use.
+**Symptom**: Error about port 8088 (or your configured port) being in use.
 
 **Solution**:
 1. Change the port in `.env`:
@@ -64,11 +64,11 @@ This guide provides solutions to common issues you might encounter while using t
 2. Or find and kill the process using the port:
    ```bash
    # Linux/macOS
-   lsof -i :8000
+   lsof -i :8088
    kill -9 <PID>
    
    # Windows
-   netstat -ano | findstr :8000
+   netstat -ano | findstr :8088
    taskkill /PID <PID> /F
    ```
 

@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: invoice-ocr-dev
     ports:
-      - "8000:8000"
+      - "8088:8000"
       - "8888:8888"  # Jupyter
     volumes:
       - .:/app

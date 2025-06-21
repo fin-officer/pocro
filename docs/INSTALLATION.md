@@ -40,10 +40,10 @@ This guide will walk you through setting up the European Invoice OCR application
 
 4. **Run the application**
    ```bash
-   uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+   uvicorn src.main:app --host 0.0.0.0 --port 8088 --reload
    ```
 
-   The API will be available at `http://localhost:8000`
+   The API will be available at `http://localhost:8088`
 
 ## Configuration
 
@@ -54,7 +54,7 @@ Key configuration options in `.env`:
 - `MODEL_NAME`: The Hugging Face model to use (e.g., `facebook/opt-125m`)
 - `QUANTIZATION`: Model quantization method (default: `awq`)
 - `HOST`: Host to bind the server to (default: `0.0.0.0`)
-- `PORT`: Port to run the server on (default: `8000`)
+- `PORT`: Port to run the server on (default: `8088`)
 - `DEBUG`: Enable debug mode (default: `False`)
 - `GPU_MEMORY_UTILIZATION`: GPU memory utilization (0-1) (default: `0.9`)
 
@@ -76,20 +76,20 @@ MODEL_NAME=gpt2  # Use a different model
 
 2. **Run the container**
    ```bash
-   docker run -p 8000:8000 --env-file .env pocro
+   docker run -p 8088:8088 --env-file .env pocro
    ```
 
 ## Verifying the Installation
 
 1. **Check the API**
    ```bash
-   curl http://localhost:8000/health
+   curl http://localhost:8088/health
    ```
    Should return: `{"status":"ok"}`
 
 2. **Test the API**
    ```bash
-   curl -X POST http://localhost:8000/process \
+   curl -X POST http://localhost:8088/process \
      -H "Content-Type: application/json" \
      -d '{"text":"Sample invoice text"}'
    ```

@@ -43,7 +43,7 @@ def temp_dir() -> Generator[Path, None, None]:
 
 
 @pytest.fixture(scope="session")
-def test_settings(temp_dir: Path, monkeypatch_session) -> Settings:
+def test_settings(temp_dir: Path, monkeypatch_session) -> AppSettings:
     """Test settings with temporary directories"""
     # Set environment variables for settings that require special handling
     monkeypatch_session.setenv("OCR_LANGUAGES", "en,de,et")
@@ -79,7 +79,7 @@ def test_client() -> TestClient:
 
 
 @pytest.fixture
-async def mock_processor(test_settings: Settings) -> EuropeanInvoiceProcessor:
+async def mock_processor(test_settings: AppSettings) -> EuropeanInvoiceProcessor:
     """Mock invoice processor for testing"""
     processor = EuropeanInvoiceProcessor(test_settings)
 

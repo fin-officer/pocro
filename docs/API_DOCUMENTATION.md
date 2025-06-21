@@ -6,7 +6,7 @@ This document provides detailed information about the European Invoice OCR API e
 
 All API endpoints are relative to the base URL:
 ```
-http://localhost:8000  # or your configured host:port
+http://localhost:8088  # or your configured host:port
 ```
 
 ## Authentication
@@ -43,7 +43,7 @@ Process an invoice image or PDF and extract structured data.
 
 **Example Request**:
 ```bash
-curl -X POST http://localhost:8000/process \
+curl -X POST http://localhost:8088/process \
   -F "file=@/path/to/invoice.pdf" \
   -F "extract_tables=true" \
   -F "language=en"
@@ -114,7 +114,7 @@ Process raw invoice text and extract structured data.
 
 **Example Request**:
 ```bash
-curl -X POST http://localhost:8000/process/text \
+curl -X POST http://localhost:8088/process/text \
   -H "Content-Type: application/json" \
   -d '{"text":"INVOICE\\nVendor: Example Corp\\n...", "language":"en"}'
 ```
@@ -152,7 +152,7 @@ Common error codes:
 You can test the API using the built-in Swagger UI:
 
 1. Start the application
-2. Open `http://localhost:8000/docs` in your browser
+2. Open `http://localhost:8088/docs` in your browser
 3. Use the interactive UI to test endpoints
 
 ## Client Libraries
@@ -170,7 +170,7 @@ def process_invoice(api_url, file_path, language='en'):
         return response.json()
 
 # Usage
-result = process_invoice('http://localhost:8000', 'invoice.pdf')
+result = process_invoice('http://localhost:8088', 'invoice.pdf')
 print(result)
 ```
 
