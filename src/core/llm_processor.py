@@ -1,17 +1,19 @@
 """
 LLM processor for structured invoice data extraction
 """
-import json
+
 import asyncio
-import time
-from typing import Dict, Any, Optional, List
+import json
 import logging
+import time
+from typing import Any, Dict, List, Optional
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 try:
     from vllm import LLM, SamplingParams
+
     VLLM_AVAILABLE = True
 except ImportError:
     VLLM_AVAILABLE = False
@@ -25,8 +27,7 @@ logger = logging.getLogger(__name__)
 class LLMProcessor:
     """LLM processor for invoice data extraction"""
 
-    def __init__(self, model_name: str, quantization: str = "awq",
-                 use_vllm: bool = True, max_model_len: int = 4096):
+    def __init__(self, model_name: str, quantization: str = "awq", use_vllm: bool = True, max_model_len: int = 4096):
         """
         Initialize LLM processor
 
@@ -51,7 +52,7 @@ class LLMProcessor:
             # Keep existing mappings for backward compatibility
             "mistral-7b-instruct": model_name,  # Use the provided model_name
             "qwen2.5-7b": model_name,
-            "llama-3.1-8b": model_name
+            "llama-3.1-8b": model_name,
         }
 
         # Metrics
@@ -83,16 +84,12 @@ class LLMProcessor:
                 max_model_len=self.max_model_len,
                 gpu_memory_utilization=0.9,
                 dtype="half",
-                trust_remote_code=True
+                trust_remote_code=True,
             )
 
             # Configure sampling parameters
             self.sampling_params = SamplingParams(
-                temperature=0.1,
-                top_p=0.9,
-                max_tokens=1024,
-                stop_token_ids=[2],  # EOS token
-                repetition_penalty=1.1
+                temperature=0.1, top_p=0.9, max_tokens=1024, stop_token_ids=[2], repetition_penalty=1.1  # EOS token
             )
 
             logger.info("vLLM model initialized")
@@ -115,15 +112,11 @@ class LLMProcessor:
                     load_in_4bit=True,
                     bnb_4bit_compute_dtype=torch.float16,
                     bnb_4bit_quant_type="nf4",
-                    bnb_4bit_use_double_quant=True
+                    bnb_4bit_use_double_quant=True,
                 )
 
             # Load tokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                model_id,
-                trust_remote_code=True,
-                padding_side="left"
-            )
+            self.tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True, padding_side="left")
 
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -134,7 +127,7 @@ class LLMProcessor:
                 quantization_config=quantization_config,
                 device_map="auto",
                 torch_dtype=torch.float16,
-                trust_remote_code=True
+                trust_remote_code=True,
             )
 
             logger.info("Transformers model initialized")
@@ -209,7 +202,7 @@ class LLMProcessor:
                 return_tensors="pt",
                 truncation=True,
                 max_length=self.max_model_len - 1024,  # Leave space for output
-                padding=True
+                padding=True,
             )
 
             # Move to device
@@ -224,14 +217,11 @@ class LLMProcessor:
                     top_p=0.9,
                     do_sample=True,
                     repetition_penalty=1.1,
-                    pad_token_id=self.tokenizer.eos_token_id
+                    pad_token_id=self.tokenizer.eos_token_id,
                 )
 
             # Decode response
-            response = self.tokenizer.decode(
-                outputs[0][inputs["input_ids"].shape[1]:],
-                skip_special_tokens=True
-            )
+            response = self.tokenizer.decode(outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True)
 
             return response.strip()
 
@@ -243,8 +233,8 @@ class LLMProcessor:
         """Parse JSON response from LLM"""
         try:
             # Try to find JSON in response
-            start_idx = response.find('{')
-            end_idx = response.rfind('}') + 1
+            start_idx = response.find("{")
+            end_idx = response.rfind("}") + 1
 
             if start_idx != -1 and end_idx > start_idx:
                 json_str = response[start_idx:end_idx]
@@ -284,14 +274,14 @@ class LLMProcessor:
             "total_incl_vat": None,
             "raw_text": text,
             "extraction_method": "fallback",
-            "confidence_score": 0.3
+            "confidence_score": 0.3,
         }
 
         # Extract invoice number
         invoice_patterns = [
-            r'invoice\s*(?:no\.?|number)?\s*:?\s*([A-Z0-9-]+)',
-            r'rechnung\s*(?:nr\.?)?\s*:?\s*([A-Z0-9-]+)',
-            r'arve\s*(?:nr\.?)?\s*:?\s*([A-Z0-9-]+)'
+            r"invoice\s*(?:no\.?|number)?\s*:?\s*([A-Z0-9-]+)",
+            r"rechnung\s*(?:nr\.?)?\s*:?\s*([A-Z0-9-]+)",
+            r"arve\s*(?:nr\.?)?\s*:?\s*([A-Z0-9-]+)",
         ]
 
         for pattern in invoice_patterns:
@@ -301,22 +291,22 @@ class LLMProcessor:
                 break
 
         # Extract date
-        date_pattern = r'\d{1,2}[./-]\d{1,2}[./-]\d{2,4}'
+        date_pattern = r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}"
         date_match = re.search(date_pattern, text)
         if date_match:
             result["issue_date"] = date_match.group()
 
         # Extract total amount
         amount_patterns = [
-            r'total\s*:?\s*[\€\$\£]?\s*(\d+[.,]\d{2})',
-            r'gesamt\s*:?\s*[\€\$\£]?\s*(\d+[.,]\d{2})',
-            r'kokku\s*:?\s*[\€\$\£]?\s*(\d+[.,]\d{2})'
+            r"total\s*:?\s*[\€\$\£]?\s*(\d+[.,]\d{2})",
+            r"gesamt\s*:?\s*[\€\$\£]?\s*(\d+[.,]\d{2})",
+            r"kokku\s*:?\s*[\€\$\£]?\s*(\d+[.,]\d{2})",
         ]
 
         for pattern in amount_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                amount_str = match.group(1).replace(',', '.')
+                amount_str = match.group(1).replace(",", ".")
                 try:
                     result["total_incl_vat"] = float(amount_str)
                     break
@@ -337,14 +327,13 @@ class LLMProcessor:
                 results.append(result)
             return results
 
-    async def _process_batch_vllm(self, invoice_texts: List[str], detected_languages: List[str]) -> List[Dict[str, Any]]:
+    async def _process_batch_vllm(
+        self, invoice_texts: List[str], detected_languages: List[str]
+    ) -> List[Dict[str, Any]]:
         """Process batch using vLLM"""
         try:
             # Create prompts
-            prompts = [
-                create_multilingual_prompt(text, lang)
-                for text, lang in zip(invoice_texts, detected_languages)
-            ]
+            prompts = [create_multilingual_prompt(text, lang) for text, lang in zip(invoice_texts, detected_languages)]
 
             # Generate responses
             outputs = self.model.generate(prompts, self.sampling_params)
@@ -392,12 +381,12 @@ class LLMProcessor:
             "avg_time_per_request": avg_time,
             "model_name": self.model_name,
             "quantization": self.quantization,
-            "backend": "vllm" if self.use_vllm else "transformers"
+            "backend": "vllm" if self.use_vllm else "transformers",
         }
 
     async def cleanup(self):
         """Cleanup resources"""
-        if hasattr(self.model, 'cleanup'):
+        if hasattr(self.model, "cleanup"):
             self.model.cleanup()
 
         if torch.cuda.is_available():

@@ -1,27 +1,29 @@
 """
 Main processing pipeline for European Invoice OCR
 """
+
 import asyncio
-import time
-import tempfile
-import os
-from pathlib import Path
-from typing import List, Dict, Optional, Any
 import logging
-import numpy as np
+import os
+import tempfile
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 import cv2
-from PIL import Image
+import numpy as np
 from fastapi import UploadFile
+from PIL import Image
 
 from src.config.settings import AppSettings as Settings
-from src.core.preprocessor import InvoicePreprocessor
-from src.core.ocr_engine import InvoiceOCREngine
-from src.core.table_extractor import InvoiceTableExtractor
 from src.core.llm_processor import LLMProcessor
-from src.utils.monitoring import monitor_memory_usage, track_processing_time
-from src.utils.file_utils import save_temp_file, cleanup_temp_file
+from src.core.ocr_engine import InvoiceOCREngine
+from src.core.preprocessor import InvoicePreprocessor
+from src.core.table_extractor import InvoiceTableExtractor
 from src.models.invoice_schema import InvoiceData, InvoiceItem
 from src.models.validation import validate_invoice_data
+from src.utils.file_utils import cleanup_temp_file, save_temp_file
+from src.utils.monitoring import monitor_memory_usage, track_processing_time
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +40,11 @@ class EuropeanInvoiceProcessor:
 
         # Processing statistics
         self.stats = {
-            'processed_count': 0,
-            'success_count': 0,
-            'error_count': 0,
-            'total_processing_time': 0,
-            'avg_processing_time': 0
+            "processed_count": 0,
+            "success_count": 0,
+            "error_count": 0,
+            "total_processing_time": 0,
+            "avg_processing_time": 0,
         }
 
         logger.info("European Invoice Processor initialized")
@@ -58,8 +60,7 @@ class EuropeanInvoiceProcessor:
 
             # Initialize OCR engine
             self.ocr_engine = InvoiceOCREngine(
-                engine_type=self.settings.ocr_engine,
-                languages=self.settings.ocr_languages
+                engine_type=self.settings.ocr_engine, languages=self.settings.ocr_languages
             )
             logger.info("✓ OCR engine initialized")
 
@@ -69,9 +70,7 @@ class EuropeanInvoiceProcessor:
 
             # Initialize LLM processor
             self.llm_processor = LLMProcessor(
-                model_name=self.settings.model_name,
-                quantization=self.settings.quantization,
-                use_vllm=True
+                model_name=self.settings.model_name, quantization=self.settings.quantization, use_vllm=True
             )
             await self.llm_processor.initialize()
             logger.info("✓ LLM processor initialized")
@@ -103,22 +102,22 @@ class EuropeanInvoiceProcessor:
             result = await self.process_invoice_file(temp_file_path)
 
             # Add metadata
-            result['filename'] = file.filename
-            result['processing_time'] = time.time() - start_time
-            result['file_size'] = file.size if hasattr(file, 'size') else 0
+            result["filename"] = file.filename
+            result["processing_time"] = time.time() - start_time
+            result["file_size"] = file.size if hasattr(file, "size") else 0
 
             # Update statistics
-            self._update_stats(True, result['processing_time'])
+            self._update_stats(True, result["processing_time"])
 
             logger.info(f"Successfully processed {file.filename} in {result['processing_time']:.2f}s")
             return result
 
         except Exception as e:
             error_result = {
-                'status': 'error',
-                'error': str(e),
-                'filename': file.filename,
-                'processing_time': time.time() - start_time
+                "status": "error",
+                "error": str(e),
+                "filename": file.filename,
+                "processing_time": time.time() - start_time,
             }
 
             self._update_stats(False, time.time() - start_time)
@@ -158,10 +157,10 @@ class EuropeanInvoiceProcessor:
             combined_result = self._combine_page_results(all_results)
 
             return {
-                'status': 'success',
-                'pages_processed': len(images),
-                'extracted_data': combined_result,
-                'page_results': all_results
+                "status": "success",
+                "pages_processed": len(images),
+                "extracted_data": combined_result,
+                "page_results": all_results,
             }
 
         except Exception as e:
@@ -173,13 +172,13 @@ class EuropeanInvoiceProcessor:
         try:
             file_ext = Path(file_path).suffix.lower()
 
-            if file_ext == '.pdf':
+            if file_ext == ".pdf":
                 # Convert PDF to images
                 pil_images = self.preprocessor.pdf_to_images(file_path)
                 images = [np.array(img) for img in pil_images]
                 logger.debug(f"Converted PDF to {len(images)} images")
 
-            elif file_ext in ['.jpg', '.jpeg', '.png', '.tiff', '.bmp']:
+            elif file_ext in [".jpg", ".jpeg", ".png", ".tiff", ".bmp"]:
                 # Load single image
                 image = cv2.imread(file_path)
                 if image is None:
@@ -209,41 +208,40 @@ class EuropeanInvoiceProcessor:
 
             # Step 3: Table extraction
             logger.debug(f"Extracting tables from {page_id}")
-            tables = self.table_extractor.extract_tables(preprocessed_image, ocr_result['text_elements'])
+            tables = self.table_extractor.extract_tables(preprocessed_image, ocr_result["text_elements"])
 
             # Step 4: Parse line items from tables
             line_items = self.table_extractor.parse_invoice_line_items(tables)
 
             # Step 5: Detect language
-            detected_language = self.ocr_engine.detect_language(ocr_result['text_elements'])
+            detected_language = self.ocr_engine.detect_language(ocr_result["text_elements"])
 
             # Step 6: LLM structured extraction
             logger.debug(f"Extracting structured data from {page_id}")
             structured_data = await self.llm_processor.extract_structured_data(
-                ocr_result['full_text'],
-                detected_language
+                ocr_result["full_text"], detected_language
             )
 
             # Step 7: Merge table data with LLM data
             merged_data = self._merge_extraction_results(structured_data, line_items, tables)
 
             return {
-                'page_id': page_id,
-                'ocr_result': ocr_result,
-                'tables': tables,
-                'line_items': line_items,
-                'detected_language': detected_language,
-                'structured_data': merged_data,
-                'quality_metrics': self._calculate_quality_metrics(ocr_result, structured_data)
+                "page_id": page_id,
+                "ocr_result": ocr_result,
+                "tables": tables,
+                "line_items": line_items,
+                "detected_language": detected_language,
+                "structured_data": merged_data,
+                "quality_metrics": self._calculate_quality_metrics(ocr_result, structured_data),
             }
 
         except Exception as e:
             logger.error(f"Error processing {page_id}: {e}")
             return {
-                'page_id': page_id,
-                'error': str(e),
-                'ocr_result': {'full_text': '', 'text_elements': []},
-                'structured_data': {}
+                "page_id": page_id,
+                "error": str(e),
+                "ocr_result": {"full_text": "", "text_elements": []},
+                "structured_data": {},
             }
 
     def _merge_extraction_results(self, llm_data: Dict, line_items: List[Dict], tables: List[Dict]) -> Dict:
@@ -253,15 +251,15 @@ class EuropeanInvoiceProcessor:
             merged = llm_data.copy()
 
             # Enhance line items with table data if available
-            if line_items and not merged.get('invoice_lines'):
-                merged['invoice_lines'] = line_items
-            elif line_items and merged.get('invoice_lines'):
+            if line_items and not merged.get("invoice_lines"):
+                merged["invoice_lines"] = line_items
+            elif line_items and merged.get("invoice_lines"):
                 # Compare and potentially merge line items
-                merged['invoice_lines'] = self._merge_line_items(merged['invoice_lines'], line_items)
+                merged["invoice_lines"] = self._merge_line_items(merged["invoice_lines"], line_items)
 
             # Add table metadata
-            merged['tables_detected'] = len(tables)
-            merged['table_line_items'] = len(line_items)
+            merged["tables_detected"] = len(tables)
+            merged["table_line_items"] = len(line_items)
 
             # Validate financial totals
             merged = self._validate_financial_totals(merged)
@@ -282,25 +280,23 @@ class EuropeanInvoiceProcessor:
     def _validate_financial_totals(self, data: Dict) -> Dict:
         """Validate and correct financial totals"""
         try:
-            line_items = data.get('invoice_lines', [])
+            line_items = data.get("invoice_lines", [])
 
             if line_items:
                 # Calculate totals from line items
-                calculated_subtotal = sum(
-                    float(item.get('line_total', 0)) for item in line_items
-                )
+                calculated_subtotal = sum(float(item.get("line_total", 0)) for item in line_items)
 
                 # Update totals if they seem incorrect
-                if not data.get('total_excl_vat') or abs(data['total_excl_vat'] - calculated_subtotal) > 0.01:
-                    data['total_excl_vat'] = calculated_subtotal
+                if not data.get("total_excl_vat") or abs(data["total_excl_vat"] - calculated_subtotal) > 0.01:
+                    data["total_excl_vat"] = calculated_subtotal
 
                     # Estimate VAT if not present
-                    if not data.get('total_vat'):
+                    if not data.get("total_vat"):
                         # Assume 20% VAT as default for European invoices
-                        data['total_vat'] = calculated_subtotal * 0.20
+                        data["total_vat"] = calculated_subtotal * 0.20
 
                     # Calculate total including VAT
-                    data['total_incl_vat'] = data['total_excl_vat'] + data['total_vat']
+                    data["total_incl_vat"] = data["total_excl_vat"] + data["total_vat"]
 
             return data
 
@@ -311,28 +307,28 @@ class EuropeanInvoiceProcessor:
     def _calculate_quality_metrics(self, ocr_result: Dict, structured_data: Dict) -> Dict:
         """Calculate quality metrics for the extraction"""
         metrics = {
-            'ocr_confidence': ocr_result.get('avg_confidence', 0),
-            'text_elements_count': ocr_result.get('total_elements', 0),
-            'required_fields_present': 0,
-            'data_completeness': 0,
-            'overall_quality': 0
+            "ocr_confidence": ocr_result.get("avg_confidence", 0),
+            "text_elements_count": ocr_result.get("total_elements", 0),
+            "required_fields_present": 0,
+            "data_completeness": 0,
+            "overall_quality": 0,
         }
 
         # Check required fields
-        required_fields = ['invoice_id', 'issue_date', 'supplier', 'total_incl_vat']
+        required_fields = ["invoice_id", "issue_date", "supplier", "total_incl_vat"]
         present_fields = sum(1 for field in required_fields if structured_data.get(field))
-        metrics['required_fields_present'] = present_fields / len(required_fields)
+        metrics["required_fields_present"] = present_fields / len(required_fields)
 
         # Calculate data completeness
-        all_fields = ['invoice_id', 'issue_date', 'supplier', 'customer', 'invoice_lines', 'total_incl_vat']
+        all_fields = ["invoice_id", "issue_date", "supplier", "customer", "invoice_lines", "total_incl_vat"]
         complete_fields = sum(1 for field in all_fields if structured_data.get(field))
-        metrics['data_completeness'] = complete_fields / len(all_fields)
+        metrics["data_completeness"] = complete_fields / len(all_fields)
 
         # Overall quality score
-        metrics['overall_quality'] = (
-            metrics['ocr_confidence'] * 0.3 +
-            metrics['required_fields_present'] * 0.4 +
-            metrics['data_completeness'] * 0.3
+        metrics["overall_quality"] = (
+            metrics["ocr_confidence"] * 0.3
+            + metrics["required_fields_present"] * 0.4
+            + metrics["data_completeness"] * 0.3
         )
 
         return metrics
@@ -343,18 +339,18 @@ class EuropeanInvoiceProcessor:
             return {}
 
         if len(page_results) == 1:
-            return page_results[0]['structured_data']
+            return page_results[0]["structured_data"]
 
         # For multi-page invoices, combine data intelligently
-        combined = page_results[0]['structured_data'].copy()
+        combined = page_results[0]["structured_data"].copy()
 
         # Combine line items from all pages
         all_line_items = []
         for result in page_results:
-            line_items = result.get('structured_data', {}).get('invoice_lines', [])
+            line_items = result.get("structured_data", {}).get("invoice_lines", [])
             all_line_items.extend(line_items)
 
-        combined['invoice_lines'] = all_line_items
+        combined["invoice_lines"] = all_line_items
 
         # Recalculate totals
         combined = self._validate_financial_totals(combined)
@@ -390,32 +386,30 @@ class EuropeanInvoiceProcessor:
 
     def _update_stats(self, success: bool, processing_time: float):
         """Update processing statistics"""
-        self.stats['processed_count'] += 1
-        self.stats['total_processing_time'] += processing_time
+        self.stats["processed_count"] += 1
+        self.stats["total_processing_time"] += processing_time
 
         if success:
-            self.stats['success_count'] += 1
+            self.stats["success_count"] += 1
         else:
-            self.stats['error_count'] += 1
+            self.stats["error_count"] += 1
 
-        self.stats['avg_processing_time'] = (
-            self.stats['total_processing_time'] / self.stats['processed_count']
-        )
+        self.stats["avg_processing_time"] = self.stats["total_processing_time"] / self.stats["processed_count"]
 
     async def get_model_status(self) -> Dict:
         """Get status of loaded models"""
         status = {
-            'ocr_engine': {
-                'type': self.settings.ocr_engine,
-                'languages': self.settings.ocr_languages,
-                'initialized': self.ocr_engine is not None
+            "ocr_engine": {
+                "type": self.settings.ocr_engine,
+                "languages": self.settings.ocr_languages,
+                "initialized": self.ocr_engine is not None,
             },
-            'llm_model': {
-                'name': self.settings.model_name,
-                'quantization': self.settings.quantization,
-                'initialized': self.llm_processor is not None
+            "llm_model": {
+                "name": self.settings.model_name,
+                "quantization": self.settings.quantization,
+                "initialized": self.llm_processor is not None,
             },
-            'memory_usage': monitor_memory_usage()
+            "memory_usage": monitor_memory_usage(),
         }
 
         return status
@@ -423,14 +417,14 @@ class EuropeanInvoiceProcessor:
     async def get_metrics(self) -> Dict:
         """Get processing metrics"""
         return {
-            'processing_stats': self.stats,
-            'system_metrics': monitor_memory_usage(),
-            'settings': {
-                'ocr_engine': self.settings.ocr_engine,
-                'model_name': self.settings.model_name,
-                'max_file_size': self.settings.max_file_size,
-                'max_batch_size': self.settings.max_batch_size
-            }
+            "processing_stats": self.stats,
+            "system_metrics": monitor_memory_usage(),
+            "settings": {
+                "ocr_engine": self.settings.ocr_engine,
+                "model_name": self.settings.model_name,
+                "max_file_size": self.settings.max_file_size,
+                "max_batch_size": self.settings.max_batch_size,
+            },
         }
 
     async def cleanup(self):

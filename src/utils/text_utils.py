@@ -1,12 +1,13 @@
 """
 Text processing utilities for invoice data extraction
 """
+
+import logging
 import re
 import unicodedata
-from typing import List, Dict, Optional, Tuple, Any, Union
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from datetime import datetime, date
-import logging
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -17,54 +18,60 @@ class TextProcessor:
     def __init__(self):
         # Currency symbols and codes
         self.currency_symbols = {
-            '€': 'EUR', '$': 'USD', '£': 'GBP', '¥': 'JPY',
-            '₹': 'INR', '₽': 'RUB', '₩': 'KRW', '₴': 'UAH'
+            "€": "EUR",
+            "$": "USD",
+            "£": "GBP",
+            "¥": "JPY",
+            "₹": "INR",
+            "₽": "RUB",
+            "₩": "KRW",
+            "₴": "UAH",
         }
 
         # Common invoice number patterns
         self.invoice_patterns = [
-            r'(?:Invoice|Rechnung|Arve|Factura|Fattura)[\s#:]*([A-Z0-9\-/\.]+)',
-            r'(?:No|Nr|Number|Numero)[\s.:]*([A-Z0-9\-/\.]+)',
-            r'([A-Z]{1,4}\-\d{4,})',  # ABC-1234
-            r'(\d{4,})',              # 1234567
-            r'([A-Z]{1,4}\d{4,})',    # ABC1234
-            r'(\d{4}/\d{4})',         # 2024/0001
-            r'([A-Z]{1,4}/\d{4,})'    # INV/2024001
+            r"(?:Invoice|Rechnung|Arve|Factura|Fattura)[\s#:]*([A-Z0-9\-/\.]+)",
+            r"(?:No|Nr|Number|Numero)[\s.:]*([A-Z0-9\-/\.]+)",
+            r"([A-Z]{1,4}\-\d{4,})",  # ABC-1234
+            r"(\d{4,})",  # 1234567
+            r"([A-Z]{1,4}\d{4,})",  # ABC1234
+            r"(\d{4}/\d{4})",  # 2024/0001
+            r"([A-Z]{1,4}/\d{4,})",  # INV/2024001
         ]
 
         # Date patterns for different locales
         self.date_patterns = [
-            (r'(\d{4})-(\d{2})-(\d{2})', '%Y-%m-%d'),           # 2024-01-15
-            (r'(\d{2})\.(\d{2})\.(\d{4})', '%d.%m.%Y'),         # 15.01.2024
-            (r'(\d{2})/(\d{2})/(\d{4})', '%d/%m/%Y'),           # 15/01/2024
-            (r'(\d{2})-(\d{2})-(\d{4})', '%d-%m-%Y'),           # 15-01-2024
-            (r'(\d{1,2})\s+(\w+)\s+(\d{4})', '%d %B %Y'),       # 15 January 2024
-            (r'(\w+)\s+(\d{1,2}),?\s+(\d{4})', '%B %d %Y'),     # January 15, 2024
+            (r"(\d{4})-(\d{2})-(\d{2})", "%Y-%m-%d"),  # 2024-01-15
+            (r"(\d{2})\.(\d{2})\.(\d{4})", "%d.%m.%Y"),  # 15.01.2024
+            (r"(\d{2})/(\d{2})/(\d{4})", "%d/%m/%Y"),  # 15/01/2024
+            (r"(\d{2})-(\d{2})-(\d{4})", "%d-%m-%Y"),  # 15-01-2024
+            (r"(\d{1,2})\s+(\w+)\s+(\d{4})", "%d %B %Y"),  # 15 January 2024
+            (r"(\w+)\s+(\d{1,2}),?\s+(\d{4})", "%B %d %Y"),  # January 15, 2024
         ]
 
         # Amount patterns
         self.amount_patterns = [
-            r'([€$£¥₹₽₩₴])\s*([0-9\s.,]+)',           # Symbol before
-            r'([0-9\s.,]+)\s*([€$£¥₹₽₩₴])',           # Symbol after
-            r'([0-9\s.,]+)\s*(EUR|USD|GBP|JPY|PLN|SEK|DKK|NOK)',  # Currency code
-            r'([0-9]{1,3}(?:[.,]\d{3})*[.,]\d{2})',   # Standard amount format
+            r"([€$£¥₹₽₩₴])\s*([0-9\s.,]+)",  # Symbol before
+            r"([0-9\s.,]+)\s*([€$£¥₹₽₩₴])",  # Symbol after
+            r"([0-9\s.,]+)\s*(EUR|USD|GBP|JPY|PLN|SEK|DKK|NOK)",  # Currency code
+            r"([0-9]{1,3}(?:[.,]\d{3})*[.,]\d{2})",  # Standard amount format
         ]
 
         # VAT ID patterns by country
         self.vat_patterns = {
-            'DE': r'DE[0-9]{9}',           # Germany
-            'EE': r'EE[0-9]{9}',           # Estonia
-            'GB': r'GB[0-9]{9}',           # United Kingdom
-            'FR': r'FR[0-9A-Z]{2}[0-9]{9}', # France
-            'IT': r'IT[0-9]{11}',          # Italy
-            'ES': r'ES[0-9A-Z][0-9]{7}[0-9A-Z]', # Spain
-            'NL': r'NL[0-9]{9}B[0-9]{2}',  # Netherlands
-            'AT': r'ATU[0-9]{8}',          # Austria
-            'BE': r'BE[0-9]{10}',          # Belgium
-            'PL': r'PL[0-9]{10}',          # Poland
-            'FI': r'FI[0-9]{8}',           # Finland
-            'SE': r'SE[0-9]{12}',          # Sweden
-            'DK': r'DK[0-9]{8}'            # Denmark
+            "DE": r"DE[0-9]{9}",  # Germany
+            "EE": r"EE[0-9]{9}",  # Estonia
+            "GB": r"GB[0-9]{9}",  # United Kingdom
+            "FR": r"FR[0-9A-Z]{2}[0-9]{9}",  # France
+            "IT": r"IT[0-9]{11}",  # Italy
+            "ES": r"ES[0-9A-Z][0-9]{7}[0-9A-Z]",  # Spain
+            "NL": r"NL[0-9]{9}B[0-9]{2}",  # Netherlands
+            "AT": r"ATU[0-9]{8}",  # Austria
+            "BE": r"BE[0-9]{10}",  # Belgium
+            "PL": r"PL[0-9]{10}",  # Poland
+            "FI": r"FI[0-9]{8}",  # Finland
+            "SE": r"SE[0-9]{12}",  # Sweden
+            "DK": r"DK[0-9]{8}",  # Denmark
         }
 
     def clean_text(self, text: str) -> str:
@@ -82,10 +89,10 @@ class TextProcessor:
 
         try:
             # Normalize unicode characters
-            text = unicodedata.normalize('NFKC', text)
+            text = unicodedata.normalize("NFKC", text)
 
             # Remove excessive whitespace
-            text = re.sub(r'\s+', ' ', text)
+            text = re.sub(r"\s+", " ", text)
 
             # Strip leading/trailing whitespace
             text = text.strip()
@@ -137,11 +144,11 @@ class TextProcessor:
 
                 for match in matches:
                     try:
-                        if date_format == '%d %B %Y':
+                        if date_format == "%d %B %Y":
                             # Handle month names
                             day, month_name, year = match.groups()
                             date_str = f"{day} {month_name} {year}"
-                        elif date_format == '%B %d %Y':
+                        elif date_format == "%B %d %Y":
                             # Handle month names
                             month_name, day, year = match.groups()
                             date_str = f"{month_name} {day} {year}"
@@ -151,7 +158,7 @@ class TextProcessor:
 
                         # Parse and format date
                         parsed_date = datetime.strptime(date_str, date_format)
-                        iso_date = parsed_date.strftime('%Y-%m-%d')
+                        iso_date = parsed_date.strftime("%Y-%m-%d")
 
                         if iso_date not in dates:
                             dates.append(iso_date)
@@ -193,25 +200,23 @@ class TextProcessor:
                             elif groups[1] in self.currency_symbols:
                                 currency = self.currency_symbols[groups[1]]
                                 amount_str = groups[0]
-                            elif groups[1] in ['EUR', 'USD', 'GBP', 'JPY', 'PLN', 'SEK', 'DKK', 'NOK']:
+                            elif groups[1] in ["EUR", "USD", "GBP", "JPY", "PLN", "SEK", "DKK", "NOK"]:
                                 currency = groups[1]
                                 amount_str = groups[0]
                             else:
                                 continue
                         else:
                             # Amount only, assume EUR for European invoices
-                            currency = 'EUR'
+                            currency = "EUR"
                             amount_str = groups[0]
 
                         # Parse amount
                         amount_value = self.parse_amount(amount_str)
 
                         if amount_value is not None and amount_value > 0:
-                            amounts.append({
-                                'amount': float(amount_value),
-                                'currency': currency,
-                                'raw_text': match.group()
-                            })
+                            amounts.append(
+                                {"amount": float(amount_value), "currency": currency, "raw_text": match.group()}
+                            )
 
                     except Exception:
                         continue
@@ -221,12 +226,12 @@ class TextProcessor:
             seen = set()
 
             for item in amounts:
-                key = (item['amount'], item['currency'])
+                key = (item["amount"], item["currency"])
                 if key not in seen:
                     seen.add(key)
                     unique_amounts.append(item)
 
-            return sorted(unique_amounts, key=lambda x: x['amount'], reverse=True)
+            return sorted(unique_amounts, key=lambda x: x["amount"], reverse=True)
 
         except Exception as e:
             logger.error(f"Amount extraction failed: {e}")
@@ -247,28 +252,28 @@ class TextProcessor:
                 return None
 
             # Clean the string
-            cleaned = re.sub(r'[^\d.,\-]', '', amount_str.strip())
+            cleaned = re.sub(r"[^\d.,\-]", "", amount_str.strip())
 
             if not cleaned:
                 return None
 
             # Handle different decimal separators
-            if ',' in cleaned and '.' in cleaned:
+            if "," in cleaned and "." in cleaned:
                 # European format: 1.234,56
-                if cleaned.rfind(',') > cleaned.rfind('.'):
-                    cleaned = cleaned.replace('.', '').replace(',', '.')
+                if cleaned.rfind(",") > cleaned.rfind("."):
+                    cleaned = cleaned.replace(".", "").replace(",", ".")
                 else:
                     # US format: 1,234.56
-                    cleaned = cleaned.replace(',', '')
-            elif ',' in cleaned:
+                    cleaned = cleaned.replace(",", "")
+            elif "," in cleaned:
                 # Check if comma is decimal separator
-                parts = cleaned.split(',')
+                parts = cleaned.split(",")
                 if len(parts) == 2 and len(parts[1]) <= 2:
                     # Decimal separator
-                    cleaned = cleaned.replace(',', '.')
+                    cleaned = cleaned.replace(",", ".")
                 else:
                     # Thousands separator
-                    cleaned = cleaned.replace(',', '')
+                    cleaned = cleaned.replace(",", "")
 
             return Decimal(cleaned)
 
@@ -294,10 +299,7 @@ class TextProcessor:
 
                 for match in matches:
                     vat_id = match.group().upper()
-                    vat_ids.append({
-                        'vat_id': vat_id,
-                        'country': country
-                    })
+                    vat_ids.append({"vat_id": vat_id, "country": country})
 
             return vat_ids
 
@@ -320,35 +322,109 @@ class TextProcessor:
 
             # Language keywords
             language_keywords = {
-                'de': [
-                    'rechnung', 'datum', 'betrag', 'mwst', 'ust', 'gesamt', 'summe',
-                    'netto', 'brutto', 'lieferant', 'kunde', 'steuernummer',
-                    'ustidnr', 'rechnungsnummer', 'zahlbar', 'fällig'
+                "de": [
+                    "rechnung",
+                    "datum",
+                    "betrag",
+                    "mwst",
+                    "ust",
+                    "gesamt",
+                    "summe",
+                    "netto",
+                    "brutto",
+                    "lieferant",
+                    "kunde",
+                    "steuernummer",
+                    "ustidnr",
+                    "rechnungsnummer",
+                    "zahlbar",
+                    "fällig",
                 ],
-                'et': [
-                    'arve', 'kuupäev', 'summa', 'käibemaks', 'kokku', 'maksukohustuslane',
-                    'reg', 'müüja', 'ostja', 'maksetähtaeg', 'number'
+                "et": [
+                    "arve",
+                    "kuupäev",
+                    "summa",
+                    "käibemaks",
+                    "kokku",
+                    "maksukohustuslane",
+                    "reg",
+                    "müüja",
+                    "ostja",
+                    "maksetähtaeg",
+                    "number",
                 ],
-                'en': [
-                    'invoice', 'date', 'amount', 'vat', 'total', 'subtotal', 'tax',
-                    'supplier', 'customer', 'due', 'payment', 'number', 'net', 'gross'
+                "en": [
+                    "invoice",
+                    "date",
+                    "amount",
+                    "vat",
+                    "total",
+                    "subtotal",
+                    "tax",
+                    "supplier",
+                    "customer",
+                    "due",
+                    "payment",
+                    "number",
+                    "net",
+                    "gross",
                 ],
-                'fr': [
-                    'facture', 'date', 'montant', 'tva', 'total', 'fournisseur',
-                    'client', 'échéance', 'paiement', 'numéro', 'net', 'brut'
+                "fr": [
+                    "facture",
+                    "date",
+                    "montant",
+                    "tva",
+                    "total",
+                    "fournisseur",
+                    "client",
+                    "échéance",
+                    "paiement",
+                    "numéro",
+                    "net",
+                    "brut",
                 ],
-                'es': [
-                    'factura', 'fecha', 'importe', 'iva', 'total', 'proveedor',
-                    'cliente', 'vencimiento', 'pago', 'número', 'neto', 'bruto'
+                "es": [
+                    "factura",
+                    "fecha",
+                    "importe",
+                    "iva",
+                    "total",
+                    "proveedor",
+                    "cliente",
+                    "vencimiento",
+                    "pago",
+                    "número",
+                    "neto",
+                    "bruto",
                 ],
-                'it': [
-                    'fattura', 'data', 'importo', 'iva', 'totale', 'fornitore',
-                    'cliente', 'scadenza', 'pagamento', 'numero', 'netto', 'lordo'
+                "it": [
+                    "fattura",
+                    "data",
+                    "importo",
+                    "iva",
+                    "totale",
+                    "fornitore",
+                    "cliente",
+                    "scadenza",
+                    "pagamento",
+                    "numero",
+                    "netto",
+                    "lordo",
                 ],
-                'nl': [
-                    'factuur', 'datum', 'bedrag', 'btw', 'totaal', 'leverancier',
-                    'klant', 'vervaldatum', 'betaling', 'nummer', 'netto', 'bruto'
-                ]
+                "nl": [
+                    "factuur",
+                    "datum",
+                    "bedrag",
+                    "btw",
+                    "totaal",
+                    "leverancier",
+                    "klant",
+                    "vervaldatum",
+                    "betaling",
+                    "nummer",
+                    "netto",
+                    "bruto",
+                ],
             }
 
             # Count matches for each language
@@ -367,11 +443,11 @@ class TextProcessor:
                     return detected_lang
 
             # Default to English
-            return 'en'
+            return "en"
 
         except Exception as e:
             logger.error(f"Language detection failed: {e}")
-            return 'en'
+            return "en"
 
     def extract_companies(self, text: str) -> List[Dict[str, str]]:
         """
@@ -388,15 +464,34 @@ class TextProcessor:
         try:
             # Company suffixes
             suffixes = [
-                r'GmbH', r'AG', r'Ltd', r'Limited', r'Inc', r'Corp', r'Corporation',
-                r'OÜ', r'AS', r'OY', r'AB', r'ApS', r'A/S', r'SA', r'SL', r'SRL',
-                r'LLC', r'LLP', r'LP', r'PLC', r'BV', r'NV'
+                r"GmbH",
+                r"AG",
+                r"Ltd",
+                r"Limited",
+                r"Inc",
+                r"Corp",
+                r"Corporation",
+                r"OÜ",
+                r"AS",
+                r"OY",
+                r"AB",
+                r"ApS",
+                r"A/S",
+                r"SA",
+                r"SL",
+                r"SRL",
+                r"LLC",
+                r"LLP",
+                r"LP",
+                r"PLC",
+                r"BV",
+                r"NV",
             ]
 
-            suffix_pattern = '|'.join(suffixes)
+            suffix_pattern = "|".join(suffixes)
 
             # Pattern to match company names
-            pattern = rf'([A-ZÀ-ÿ][a-zA-ZÀ-ÿ\s&\-\.]+\s+(?:{suffix_pattern})\.?)'
+            pattern = rf"([A-ZÀ-ÿ][a-zA-ZÀ-ÿ\s&\-\.]+\s+(?:{suffix_pattern})\.?)"
 
             matches = re.finditer(pattern, text, re.IGNORECASE)
 
@@ -404,21 +499,18 @@ class TextProcessor:
                 company_name = self.clean_text(match.group(1))
 
                 if len(company_name) > 3:  # Filter out very short matches
-                    companies.append({
-                        'name': company_name,
-                        'position': match.start()
-                    })
+                    companies.append({"name": company_name, "position": match.start()})
 
             # Remove duplicates and sort by position
             unique_companies = []
             seen = set()
 
             for company in companies:
-                if company['name'] not in seen:
-                    seen.add(company['name'])
+                if company["name"] not in seen:
+                    seen.add(company["name"])
                     unique_companies.append(company)
 
-            return sorted(unique_companies, key=lambda x: x['position'])
+            return sorted(unique_companies, key=lambda x: x["position"])
 
         except Exception as e:
             logger.error(f"Company extraction failed: {e}")
@@ -439,11 +531,11 @@ class TextProcessor:
         try:
             # Pattern for postal codes (European formats)
             postal_patterns = [
-                r'\b\d{5}\b',           # Germany (12345)
-                r'\b\d{5}\s+[A-Z]+\b', # Estonia (12345 Tallinn)
-                r'\b[A-Z]{1,2}\d{1,2}[A-Z]?\s+\d[A-Z]{2}\b', # UK (SW1A 1AA)
-                r'\b\d{2}-\d{3}\b',     # Poland (12-345)
-                r'\b\d{3}\s?\d{2}\b',   # Sweden/Norway (123 45)
+                r"\b\d{5}\b",  # Germany (12345)
+                r"\b\d{5}\s+[A-Z]+\b",  # Estonia (12345 Tallinn)
+                r"\b[A-Z]{1,2}\d{1,2}[A-Z]?\s+\d[A-Z]{2}\b",  # UK (SW1A 1AA)
+                r"\b\d{2}-\d{3}\b",  # Poland (12-345)
+                r"\b\d{3}\s?\d{2}\b",  # Sweden/Norway (123 45)
             ]
 
             for pattern in postal_patterns:
@@ -455,7 +547,7 @@ class TextProcessor:
                     end = min(len(text), match.end() + 50)
 
                     context = text[start:end].strip()
-                    lines = context.split('\n')
+                    lines = context.split("\n")
 
                     # Look for address-like patterns
                     for line in lines:
@@ -481,11 +573,11 @@ class TextProcessor:
             Text with normalized line endings
         """
         # Replace various line ending types with \n
-        text = re.sub(r'\r\n', '\n', text)
-        text = re.sub(r'\r', '\n', text)
+        text = re.sub(r"\r\n", "\n", text)
+        text = re.sub(r"\r", "\n", text)
 
         # Remove excessive line breaks
-        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
 
         return text
 
@@ -500,7 +592,7 @@ class TextProcessor:
             List of email addresses
         """
         try:
-            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+            email_pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
             emails = re.findall(email_pattern, text)
             return list(set(emails))  # Remove duplicates
 
@@ -521,9 +613,9 @@ class TextProcessor:
         try:
             # European phone number patterns
             patterns = [
-                r'\+\d{1,3}[-.\s]?\d{1,14}',              # International format
-                r'\b\d{2,4}[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b', # Local format
-                r'\(\d{2,4}\)\s?\d{3,8}',                 # Format with parentheses
+                r"\+\d{1,3}[-.\s]?\d{1,14}",  # International format
+                r"\b\d{2,4}[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b",  # Local format
+                r"\(\d{2,4}\)\s?\d{3,8}",  # Format with parentheses
             ]
 
             phone_numbers = []
@@ -535,7 +627,7 @@ class TextProcessor:
             # Clean and deduplicate
             cleaned_numbers = []
             for number in phone_numbers:
-                cleaned = re.sub(r'[^\d+]', '', number)
+                cleaned = re.sub(r"[^\d+]", "", number)
                 if len(cleaned) >= 7:  # Minimum phone number length
                     cleaned_numbers.append(number.strip())
 
@@ -561,8 +653,8 @@ class TextProcessor:
                 return 0.0
 
             # Normalize texts
-            words1 = set(re.findall(r'\b\w+\b', text1.lower()))
-            words2 = set(re.findall(r'\b\w+\b', text2.lower()))
+            words1 = set(re.findall(r"\b\w+\b", text1.lower()))
+            words2 = set(re.findall(r"\b\w+\b", text2.lower()))
 
             if not words1 or not words2:
                 return 0.0
@@ -594,14 +686,14 @@ def extract_key_invoice_data(text: str) -> Dict[str, Any]:
     """
     try:
         return {
-            'invoice_number': text_processor.extract_invoice_number(text),
-            'dates': text_processor.extract_dates(text),
-            'amounts': text_processor.extract_amounts(text),
-            'vat_ids': text_processor.extract_vat_ids(text),
-            'companies': text_processor.extract_companies(text),
-            'language': text_processor.detect_language(text),
-            'emails': text_processor.extract_emails(text),
-            'phone_numbers': text_processor.extract_phone_numbers(text)
+            "invoice_number": text_processor.extract_invoice_number(text),
+            "dates": text_processor.extract_dates(text),
+            "amounts": text_processor.extract_amounts(text),
+            "vat_ids": text_processor.extract_vat_ids(text),
+            "companies": text_processor.extract_companies(text),
+            "language": text_processor.detect_language(text),
+            "emails": text_processor.extract_emails(text),
+            "phone_numbers": text_processor.extract_phone_numbers(text),
         }
 
     except Exception as e:
@@ -628,10 +720,10 @@ def clean_ocr_text(text: str) -> str:
 
         # Fix common OCR errors
         ocr_fixes = {
-            r'\b0(?=[A-Z])\b': 'O',  # 0 -> O before uppercase
-            r'\b1(?=[a-z])\b': 'l',  # 1 -> l before lowercase
-            r'\bS(?=\d)\b': '5',     # S -> 5 before digits
-            r'\bO(?=\d)\b': '0',     # O -> 0 before digits
+            r"\b0(?=[A-Z])\b": "O",  # 0 -> O before uppercase
+            r"\b1(?=[a-z])\b": "l",  # 1 -> l before lowercase
+            r"\bS(?=\d)\b": "5",  # S -> 5 before digits
+            r"\bO(?=\d)\b": "0",  # O -> 0 before digits
         }
 
         for pattern, replacement in ocr_fixes.items():

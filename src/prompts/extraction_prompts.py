@@ -1,40 +1,35 @@
 """
 LLM prompts for invoice data extraction
 """
+
 import json
-from typing import Dict, Any
+from typing import Any, Dict
+
 from src.models.invoice_schema import InvoiceData
 
 
 def get_extraction_prompt(invoice_text: str, detected_language: str = "en") -> str:
     """
     Generate language-specific extraction prompt
-    
+
     Args:
         invoice_text: Raw OCR text from invoice
         detected_language: Detected language code (en, de, et)
-        
+
     Returns:
         Formatted prompt for LLM
     """
     # Get the JSON schema
     schema = InvoiceData.schema()
     schema_json = json.dumps(schema, indent=2)
-    
+
     # Language-specific prompts
-    prompts = {
-        'en': ENGLISH_EXTRACTION_PROMPT,
-        'de': GERMAN_EXTRACTION_PROMPT,
-        'et': ESTONIAN_EXTRACTION_PROMPT
-    }
-    
+    prompts = {"en": ENGLISH_EXTRACTION_PROMPT, "de": GERMAN_EXTRACTION_PROMPT, "et": ESTONIAN_EXTRACTION_PROMPT}
+
     # Get prompt template for detected language, fallback to English
-    prompt_template = prompts.get(detected_language, prompts['en'])
-    
-    return prompt_template.format(
-        schema=schema_json,
-        invoice_text=invoice_text
-    )
+    prompt_template = prompts.get(detected_language, prompts["en"])
+
+    return prompt_template.format(schema=schema_json, invoice_text=invoice_text)
 
 
 ENGLISH_EXTRACTION_PROMPT = """You are an AI assistant specialized in extracting structured data from European invoices. Your task is to extract information from the provided invoice text and return it as valid JSON matching the provided schema.
@@ -129,21 +124,17 @@ JSON VÄLJUND:"""
 def get_line_items_prompt(table_text: str, detected_language: str = "en") -> str:
     """
     Generate prompt specifically for line items extraction from tables
-    
+
     Args:
         table_text: Text extracted from invoice tables
         detected_language: Detected language code
-        
+
     Returns:
         Formatted prompt for line items extraction
     """
-    prompts = {
-        'en': LINE_ITEMS_ENGLISH_PROMPT,
-        'de': LINE_ITEMS_GERMAN_PROMPT,
-        'et': LINE_ITEMS_ESTONIAN_PROMPT
-    }
-    
-    prompt_template = prompts.get(detected_language, prompts['en'])
+    prompts = {"en": LINE_ITEMS_ENGLISH_PROMPT, "de": LINE_ITEMS_GERMAN_PROMPT, "et": LINE_ITEMS_ESTONIAN_PROMPT}
+
+    prompt_template = prompts.get(detected_language, prompts["en"])
     return prompt_template.format(table_text=table_text)
 
 
@@ -189,32 +180,27 @@ TABELI TEKST:
 JSON MASSIIV:"""
 
 
-def get_correction_prompt(extracted_data: Dict[str, Any], validation_errors: list, detected_language: str = "en") -> str:
+def get_correction_prompt(
+    extracted_data: Dict[str, Any], validation_errors: list, detected_language: str = "en"
+) -> str:
     """
     Generate prompt for correcting extraction errors
-    
+
     Args:
         extracted_data: Previously extracted data with errors
         validation_errors: List of validation errors
         detected_language: Detected language code
-        
+
     Returns:
         Formatted correction prompt
     """
     errors_text = "\n".join([f"- {error}" for error in validation_errors])
-    
-    prompts = {
-        'en': CORRECTION_ENGLISH_PROMPT,
-        'de': CORRECTION_GERMAN_PROMPT,
-        'et': CORRECTION_ESTONIAN_PROMPT
-    }
-    
-    prompt_template = prompts.get(detected_language, prompts['en'])
-    
-    return prompt_template.format(
-        extracted_data=json.dumps(extracted_data, indent=2),
-        errors=errors_text
-    )
+
+    prompts = {"en": CORRECTION_ENGLISH_PROMPT, "de": CORRECTION_GERMAN_PROMPT, "et": CORRECTION_ESTONIAN_PROMPT}
+
+    prompt_template = prompts.get(detected_language, prompts["en"])
+
+    return prompt_template.format(extracted_data=json.dumps(extracted_data, indent=2), errors=errors_text)
 
 
 CORRECTION_ENGLISH_PROMPT = """The following invoice data has validation errors. Please correct the data and return valid JSON.
@@ -253,20 +239,16 @@ PARANDATUD JSON:"""
 def get_few_shot_examples(language: str = "en") -> str:
     """
     Get few-shot examples for better extraction performance
-    
+
     Args:
         language: Language code for examples
-        
+
     Returns:
         Few-shot examples text
     """
-    examples = {
-        'en': ENGLISH_EXAMPLES,
-        'de': GERMAN_EXAMPLES,
-        'et': ESTONIAN_EXAMPLES
-    }
-    
-    return examples.get(language, examples['en'])
+    examples = {"en": ENGLISH_EXAMPLES, "de": GERMAN_EXAMPLES, "et": ESTONIAN_EXAMPLES}
+
+    return examples.get(language, examples["en"])
 
 
 ENGLISH_EXAMPLES = """
@@ -353,25 +335,19 @@ JSON väljund:
 def get_confidence_prompt(extracted_data: Dict[str, Any], detected_language: str = "en") -> str:
     """
     Generate prompt for confidence scoring of extracted data
-    
+
     Args:
         extracted_data: Extracted invoice data
         detected_language: Detected language code
-        
+
     Returns:
         Formatted confidence scoring prompt
     """
-    prompts = {
-        'en': CONFIDENCE_ENGLISH_PROMPT,
-        'de': CONFIDENCE_GERMAN_PROMPT,
-        'et': CONFIDENCE_ESTONIAN_PROMPT
-    }
-    
-    prompt_template = prompts.get(detected_language, prompts['en'])
-    
-    return prompt_template.format(
-        extracted_data=json.dumps(extracted_data, indent=2)
-    )
+    prompts = {"en": CONFIDENCE_ENGLISH_PROMPT, "de": CONFIDENCE_GERMAN_PROMPT, "et": CONFIDENCE_ESTONIAN_PROMPT}
+
+    prompt_template = prompts.get(detected_language, prompts["en"])
+
+    return prompt_template.format(extracted_data=json.dumps(extracted_data, indent=2))
 
 
 CONFIDENCE_ENGLISH_PROMPT = """Rate the confidence of this invoice data extraction on a scale of 0-1 where:
