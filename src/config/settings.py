@@ -1,49 +1,55 @@
 """
-Application configuration settings
+Application configuration settings using pydantic.BaseSettings
 """
 import os
-from typing import List, Dict, Any, Type, TypeVar, get_type_hints, Optional
-from dotenv import load_dotenv
+from typing import List, Dict, Any, Optional, ClassVar
 from pathlib import Path
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseSettings, Field, validator
+from dotenv import load_dotenv
 
-# Load environment variables from .env file if it exists
+# Load environment variables from .env file
 load_dotenv()
 
-class Settings(BaseModel):
-    """Base settings class that handles environment variables"""
+class AppSettings(BaseSettings):
+    """Application settings with environment variable support"""
+    
     class Config:
         env_file = '.env'
         env_file_encoding = 'utf-8'
         extra = 'ignore'
-
-    def dict(self, **kwargs) -> Dict[str, Any]:
-        """Convert settings to a dictionary"""
-        return super().dict(**kwargs)
-
-
-class AppSettings(Settings):
-    """Application settings with environment variable defaults"""
+        case_sensitive = True
+        
+        @classmethod
+        def customise_sources(
+            cls,
+            init_settings,
+            env_settings,
+            file_secret_settings,
+        ):
+            # This ensures environment variables take precedence over .env file
+            return env_settings, init_settings, file_secret_settings
     
     # Basic settings
-    app_name: str = Field(default="European Invoice OCR", description="Application name")
-    debug: bool = Field(default=False, description="Enable debug mode")
-    environment: str = Field(default="production", description="Runtime environment")
+    app_name: str = "European Invoice OCR"
+    debug: bool = False
+    environment: str = "production"
     
     # Server settings
-    host: str = Field(default="0.0.0.0", description="Host to bind to")
-    port: int = Field(default=8005, description="Port to run on")
-    workers: int = Field(default=1, description="Number of worker processes")
+    host: str = "0.0.0.0"
+    port: int = 8005
+    workers: int = 1
     
     # GPU settings
-    cuda_visible_devices: str = Field(default="0", description="CUDA devices to make visible")
-    gpu_memory_utilization: float = Field(default=0.9, description="GPU memory utilization (0-1)")
-    max_model_length: int = Field(default=4096, description="Maximum model sequence length")
+    cuda_visible_devices: str = "0"
+    gpu_memory_utilization: float = 0.9
+    max_model_length: int = 4096
     
-    # Model settings
-    model_name: str = Field(default="mistral-7b-instruct", description="Model name")
-    quantization: str = Field(default="awq", description="Quantization method")
-    model_cache_dir: str = Field(default="./data/models", description="Directory to cache models")
+    # Model settings - this will be read from MODEL_NAME environment variable
+    model_name: str = Field("facebook/opt-125m", env="MODEL_NAME")
+    
+    # Other model settings
+    quantization: str = "awq"
+    model_cache_dir: str = "./data/models"
     
     # OCR settings
     ocr_engine: str = Field(default="easyocr", description="OCR engine to use (easyocr, paddleocr)")

@@ -46,10 +46,12 @@ class LLMProcessor:
         self.sampling_params = None
 
         # Model name mappings
+        # Use the provided model_name directly, fall back to mappings if needed
         self.model_mappings = {
-            "mistral-7b-instruct": "mistralai/Mistral-7B-Instruct-v0.1",
-            "qwen2.5-7b": "Qwen/Qwen2.5-7B-Instruct",
-            "llama-3.1-8b": "meta-llama/Llama-3.1-8B-Instruct"
+            # Keep existing mappings for backward compatibility
+            "mistral-7b-instruct": model_name,  # Use the provided model_name
+            "qwen2.5-7b": model_name,
+            "llama-3.1-8b": model_name
         }
 
         # Metrics
@@ -71,7 +73,8 @@ class LLMProcessor:
     async def _initialize_vllm(self):
         """Initialize vLLM model"""
         try:
-            model_id = self.model_mappings.get(self.model_name, self.model_name)
+            # Use the model_name directly instead of the mapping
+            model_id = self.model_name
 
             # Configure vLLM
             self.model = LLM(

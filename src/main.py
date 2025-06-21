@@ -31,6 +31,9 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting European Invoice OCR API...")
     settings = Settings()
+    # Debug: Print settings to verify they're loaded correctly
+    logger.info(f"Application settings: {settings.dict()}")
+    logger.info(f"MODEL_NAME from settings: {settings.model_name}")
     processor = EuropeanInvoiceProcessor(settings)
     await processor.initialize()
     logger.info("Application startup complete")

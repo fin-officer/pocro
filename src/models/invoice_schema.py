@@ -4,7 +4,7 @@ Pydantic models for invoice data validation (EN 16931 compliant)
 from typing import List, Optional, Dict, Any
 from datetime import date
 from decimal import Decimal
-from pydantic import BaseModel, Field, validator, model_validator
+from pydantic import BaseModel, Field, validator, root_validator
 from enum import Enum
 
 
@@ -83,14 +83,13 @@ class InvoiceItem(BaseModel):
     vat_category: VATCategory = Field(default=VATCategory.STANDARD_RATE, description="VAT category (BT-151)")
     vat_rate: Decimal = Field(..., description="VAT rate (BT-152)", ge=0, le=1)
     
-    @model_validator(mode='after')
-    def validate_line_total(self):
+    @root_validator(skip_on_failure=True)
+    def validate_line_total(cls, values):
         """Validate that line total matches quantity * unit price"""
-        calculated_total = self.quantity * self.unit_price
-        # Allow small rounding differences
-        if abs(calculated_total - self.line_total) > Decimal('0.01'):
-            self.line_total = calculated_total
-        return self
+        expected_total = values['quantity'] * values['unit_price']
+        if abs(float(values['line_total']) - float(expected_total)) > 0.01:  # Allow for floating point errors
+            raise ValueError(f'Line total {values["line_total"]} does not match quantity * unit price: {expected_total}')
+        return values
 
 
 class TaxBreakdown(BaseModel):
@@ -100,14 +99,13 @@ class TaxBreakdown(BaseModel):
     tax_rate: Decimal = Field(..., description="VAT category rate (BT-119)", ge=0, le=1)
     tax_category: VATCategory = Field(..., description="VAT category code (BT-118)")
     
-    @model_validator(mode='after')
-    def validate_tax_calculation(self):
+    @root_validator(skip_on_failure=True)
+    def validate_tax_calculation(cls, values):
         """Validate tax calculation"""
-        calculated_tax = self.taxable_amount * self.tax_rate
-        # Allow small rounding differences
-        if abs(calculated_tax - self.tax_amount) > Decimal('0.01'):
-            self.tax_amount = calculated_tax
-        return self
+        expected_tax = values['taxable_amount'] * values['tax_rate']
+        if abs(float(values['tax_amount']) - float(expected_tax)) > 0.01:  # Allow for floating point errors
+            raise ValueError(f'Tax amount {values["tax_amount"]} does not match taxable amount * rate: {expected_tax}')
+        return values
 
 
 class PaymentTerms(BaseModel):
@@ -177,35 +175,23 @@ class InvoiceData(BaseModel):
         except Exception:
             raise ValueError('Invalid date format, expected YYYY-MM-DD or DD.MM.YYYY or DD/MM/YYYY')
     
-    @model_validator(mode='after')
-    def validate_totals(self):
+    @root_validator(skip_on_failure=True)
+    def validate_totals(cls, values):
         """Validate invoice totals consistency"""
-        if None not in [self.total_excl_vat, self.total_vat, self.total_incl_vat]:
-            calculated_total = self.total_excl_vat + self.total_vat
-            # Allow small rounding differences
-            if abs(calculated_total - self.total_incl_vat) > Decimal('0.01'):
-                self.total_incl_vat = calculated_total
-        
-        # Set payable amount if not provided
-        if self.payable_amount is None:
-            self.payable_amount = self.total_incl_vat
-        
-        return self
+        if None not in [values.get('total_excl_vat'), values.get('total_vat'), values.get('total_incl_vat')]:
+            calculated_total = values['total_excl_vat'] + values['total_vat']
+            if abs(float(values['total_incl_vat']) - float(calculated_total)) > 0.01:  # Allow for floating point errors
+                raise ValueError(f'Total incl. VAT {values["total_incl_vat"]} does not match total excl. VAT + VAT: {calculated_total}')
+        return values
     
-    @model_validator(mode='after')
-    def validate_line_items_total(self):
+    @root_validator(skip_on_failure=True)
+    def validate_line_items_total(cls, values):
         """Validate that line items sum matches document total"""
-        if self.invoice_lines and self.total_excl_vat is not None:
-            calculated_total = sum(item.line_total for item in self.invoice_lines)
-            # Allow small rounding differences
-            if abs(calculated_total - self.total_excl_vat) > Decimal('0.01'):
-                self.total_excl_vat = calculated_total
-                
-                # Recalculate VAT and total
-                total_vat = self.total_vat if hasattr(self, 'total_vat') else Decimal('0')
-                self.total_incl_vat = calculated_total + total_vat
-                self.payable_amount = self.total_incl_vat
-        
+        if values.get('invoice_lines') and values.get('total_excl_vat') is not None:
+            lines_total = sum(line['line_total'] for line in values['invoice_lines'])
+            if abs(float(values['total_excl_vat']) - float(lines_total)) > 0.01:  # Allow for floating point errors
+                raise ValueError(f'Sum of line items ({lines_total}) does not match total excl. VAT ({values["total_excl_vat"]})')
+        return values
         return self
     
     def to_en16931_xml(self) -> str:
