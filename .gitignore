@@ -1,4 +1,11 @@
 .idea
+.pdf
+.png
+.jpg
+.jpeg
+.png
+.jpg
+.jpeg
 venv
 poetry.lock
 # Python

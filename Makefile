@@ -55,17 +55,15 @@ build:
 
 publish: build
 	@echo "Publishing package to PyPI..."
+	poetry version patch
 	poetry publish
 
 run:
 	python -m uvicorn src.main:app --host 0.0.0.0 --port 8088 --reload
 
 # Publishing
-publish:
-	@echo "Building package..."
-	poetry build
-	@echo "\nTo upload to PyPI, run:"
-	@echo "poetry publish"
+publish: build
+	poetry publish
 
 # Docker commands
 docker-build:

@@ -2,8 +2,7 @@
 Unit tests for table extractor
 """
 
-from typing import Dict, List
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import cv2
 import numpy as np
@@ -50,10 +49,22 @@ class TestInvoiceTableExtractor:
         cv2.line(image, (750, 100), (750, 300), (0, 0, 0), 2)  # Right border
 
         # Add some text in cells
-        cv2.putText(image, "Description", (60, 125), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
-        cv2.putText(image, "Qty", (310, 125), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
-        cv2.putText(image, "Price", (510, 125), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
-        cv2.putText(image, "Total", (660, 125), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+        cv2.putText(
+            image, "Description", (60, 125), 
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1
+        )
+        cv2.putText(
+            image, "Qty", (310, 125), 
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1
+        )
+        cv2.putText(
+            image, "Price", (510, 125), 
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1
+        )
+        cv2.putText(
+            image, "Total", (660, 125), 
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1
+        )
 
         return image
 
@@ -61,14 +72,46 @@ class TestInvoiceTableExtractor:
     def sample_ocr_results(self):
         """Sample OCR results for table extraction testing"""
         return [
-            {"text": "Description", "confidence": 0.95, "bbox": [[60, 110], [200, 110], [200, 140], [60, 140]]},
-            {"text": "Qty", "confidence": 0.92, "bbox": [[310, 110], [340, 110], [340, 140], [310, 140]]},
-            {"text": "Price", "confidence": 0.90, "bbox": [[510, 110], [560, 110], [560, 140], [510, 140]]},
-            {"text": "Total", "confidence": 0.93, "bbox": [[660, 110], [700, 110], [700, 140], [660, 140]]},
-            {"text": "Software License", "confidence": 0.88, "bbox": [[60, 160], [250, 160], [250, 190], [60, 190]]},
-            {"text": "1", "confidence": 0.95, "bbox": [[320, 160], [330, 160], [330, 190], [320, 190]]},
-            {"text": "100.00", "confidence": 0.90, "bbox": [[520, 160], [580, 160], [580, 190], [520, 190]]},
-            {"text": "100.00", "confidence": 0.91, "bbox": [[670, 160], [720, 160], [720, 190], [670, 190]]},
+            {
+                "text": "Description",
+                "confidence": 0.95,
+                "bbox": [[60, 110], [200, 110], [200, 140], [60, 140]]
+            },
+            {
+                "text": "Qty",
+                "confidence": 0.92,
+                "bbox": [[310, 110], [340, 110], [340, 140], [310, 140]]
+            },
+            {
+                "text": "Price",
+                "confidence": 0.90,
+                "bbox": [[510, 110], [560, 110], [560, 140], [510, 140]]
+            },
+            {
+                "text": "Total",
+                "confidence": 0.93,
+                "bbox": [[660, 110], [700, 110], [700, 140], [660, 140]]
+            },
+            {
+                "text": "Software License",
+                "confidence": 0.88,
+                "bbox": [[60, 160], [250, 160], [250, 190], [60, 190]]
+            },
+            {
+                "text": "1",
+                "confidence": 0.95,
+                "bbox": [[320, 160], [330, 160], [330, 190], [320, 190]]
+            },
+            {
+                "text": "100.00",
+                "confidence": 0.90,
+                "bbox": [[520, 160], [580, 160], [580, 190], [520, 190]]
+            },
+            {
+                "text": "100.00",
+                "confidence": 0.91,
+                "bbox": [[670, 160], [720, 160], [720, 190], [670, 190]]
+            },
         ]
 
     @pytest.fixture
@@ -79,12 +122,20 @@ class TestInvoiceTableExtractor:
                 "type": "table",
                 "bbox": [50, 100, 750, 300],
                 "res": {
-                    "html": """<table>
-                        <tr><td>Description</td><td>Qty</td><td>Price</td><td>Total</td></tr>
-                        <tr><td>Software License</td><td>1</td><td>100.00</td><td>100.00</td></tr>
-                        <tr><td>Support Services</td><td>1</td><td>50.00</td><td>50.00</td></tr>
-                    </table>""",
-                    "cell_bbox": [[[60, 110], [200, 140]], [[310, 110], [340, 140]]],
+                    "html": (
+                        "<table>"
+                        "<tr><td>Description</td><td>Qty</td>"
+                        "<td>Price</td><td>Total</td></tr>"
+                        "<tr><td>Software License</td><td>1</td>"
+                        "<td>100.00</td><td>100.00</td></tr>"
+                        "<tr><td>Support Services</td><td>1</td>"
+                        "<td>50.00</td><td>50.00</td></tr>"
+                        "</table>"
+                    ),
+                    "cell_bbox": [
+                        [[60, 110], [200, 140]],
+                        [[310, 110], [340, 140]]
+                    ],
                 },
             }
         ]

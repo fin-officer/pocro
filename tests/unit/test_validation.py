@@ -2,13 +2,12 @@
 Unit tests for invoice data validation
 """
 
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
-from typing import Any, Dict
 
 import pytest
 
-from src.models.invoice_schema import InvoiceValidationResult, ValidationError
+from src.models.invoice_schema import InvoiceValidationResult
 from src.models.validation import InvoiceValidator, quick_validate, validate_invoice_data
 
 
@@ -362,31 +361,28 @@ class TestValidationErrorHandling:
         assert len(result.errors) > 0
 
 
-class TestValidationPerformance:
     """Test validation performance"""
 
     def test_validation_performance_large_dataset(self, valid_invoice_data):
         """Test validation performance with large line items"""
-        # Create data with many line items
+        # Create a large dataset with 1000 line items
         large_data = valid_invoice_data.copy()
-        large_data["invoice_lines"] = []
-
-        for i in range(100):
-            large_data["invoice_lines"].append(
-                {
-                    "line_id": str(i + 1),
-                    "description": f"Item {i + 1}",
-                    "quantity": 1.0,
-                    "unit_price": 10.00,
-                    "line_total": 10.00,
-                    "vat_rate": 0.19,
-                }
-            )
+        large_data["invoice_lines"] = [
+            {
+                "line_id": str(i + 1),
+                "description": f"Item {i + 1}",
+                "quantity": 1.0,
+                "unit_price": 10.00,
+                "line_total": 10.00,
+                "vat_rate": 0.19,
+            }
+            for i in range(1000)
+        ]
 
         # Update totals
-        large_data["total_excl_vat"] = 1000.00
-        large_data["total_vat"] = 190.00
-        large_data["total_incl_vat"] = 1190.00
+        large_data["total_excl_vat"] = 10000.00
+        large_data["total_vat"] = 1900.00
+        large_data["total_incl_vat"] = 11900.00
 
         import time
 
@@ -429,8 +425,14 @@ class TestValidationEdgeCases:
             "invoice_id": "A" * 1000,  # Very long ID
             "issue_date": "2024-01-15",
             "currency_code": "EUR",
-            "supplier": {"name": "Test Company", "country_code": "DE"},
-            "customer": {"name": "Customer", "country_code": "EE"},
+            "supplier": {
+                "name": "Test Company",
+                "country_code": "DE"
+            },
+            "customer": {
+                "name": "Customer",
+                "country_code": "EE"
+            },
             "total_excl_vat": 99999999.99,  # Very large amount
             "total_vat": 19999999.99,
             "total_incl_vat": 119999999.98,

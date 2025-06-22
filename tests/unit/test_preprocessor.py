@@ -2,9 +2,14 @@
 Unit tests for image preprocessor
 """
 
+import io
+import logging
 import os
 import tempfile
 from unittest.mock import MagicMock, Mock, patch
+
+# Set up logger for tests
+logger = logging.getLogger(__name__)
 
 import cv2
 import numpy as np
@@ -217,59 +222,106 @@ class TestInvoicePreprocessor:
             mock_convert.assert_called_once()
 
     @pytest.mark.slow
-    def test_pdf_to_images_fallback_to_pymupdf(self, preprocessor, temp_dir):
+    def test_pdf_to_images_fallback_to_pymupdf(self, preprocessor, temp_dir, caplog):
         """Test PDF to images conversion with PyMuPDF fallback"""
         fake_pdf_path = temp_dir / "fake.pdf"
         fake_pdf_path.write_bytes(b"fake pdf content")
 
-        # Mock pdf2image to fail and PyMuPDF to succeed
+        # Create a simple PPM image in memory
+        img = Image.new('RGB', (100, 100), color='red')
+        ppm_buffer = io.BytesIO()
+        img.save(ppm_buffer, format='PPM')
+        ppm_data = ppm_buffer.getvalue()
+
+        # Mock pdf2image to fail
         with patch("src.core.preprocessor.convert_from_path", side_effect=Exception("pdf2image failed")):
+            # Mock fitz (PyMuPDF)
             with patch("src.core.preprocessor.fitz") as mock_fitz:
-                # Mock PyMuPDF document
+                # Create a mock document with one page
                 mock_doc = MagicMock()
                 mock_page = MagicMock()
                 mock_pix = MagicMock()
 
-                # Set up the mock document to have a length of 1
-                mock_doc.__len__.return_value = 1
-                mock_doc.load_page.return_value = mock_page
-
-                # Mock the pixmap
+                # Track method calls on our custom mock
+                class MockFitzDocument:
+                    def __init__(self, page):
+                        self.page = page
+                        self.page_count = 1
+                        self.load_page_calls = []
+                        self.close_calls = 0
+                        
+                    def __len__(self):
+                        return 1
+                        
+                    def load_page(self, page_num):
+                        self.load_page_calls.append(page_num)
+                        if page_num == 0:
+                            return self.page
+                        raise IndexError("Page out of range")
+                        
+                    def close(self):
+                        self.close_calls += 1
+                        
+                    def __enter__(self):
+                        return self
+                        
+                    def __exit__(self, exc_type, exc_val, exc_tb):
+                        pass
+                
+                # Create the mock document with our custom class
+                mock_doc = MockFitzDocument(mock_page)
+                
+                # Set up the pixmap to return our test image data
                 mock_page.get_pixmap.return_value = mock_pix
-                mock_pix.tobytes.return_value = b"fake image data"
-
+                mock_pix.tobytes.return_value = ppm_data
+                
                 # Mock the context manager behavior of fitz.open
-                mock_fitz.open.return_value.__enter__.return_value = mock_doc
-
-                # Mock PIL Image.open to return a new image
-                with patch("PIL.Image.open") as mock_image_open:
-                    mock_image = Image.new("RGB", (800, 600), color="white")
-                    mock_image_open.return_value = mock_image
-
-                    # Also mock BytesIO for the image data
-                    with patch("io.BytesIO") as mock_bytes_io:
-                        mock_file = MagicMock()
-                        mock_bytes_io.return_value = mock_file
-                        mock_file.__enter__.return_value = mock_file
-
-                        # Call the method
-                        images = preprocessor.pdf_to_images(str(fake_pdf_path))
-
-                        # Verify the results
-                        assert len(images) == 1
-                        assert isinstance(images[0], Image.Image)
-
-                        # Verify the mocks were called as expected
-                        mock_fitz.open.assert_called_once()
-                        mock_doc.load_page.assert_called_once_with(0)
-                        mock_page.get_pixmap.assert_called_once()
-                        mock_pix.tobytes.assert_called_once_with("ppm")
+                # We need to patch the actual fitz.open that will be imported in the preprocessor
+                # First, let's get the actual fitz module that will be used
+                import fitz
+                
+                # Create a mock for the fitz module that will return our mock document
+                mock_fitz.open.return_value = mock_doc
+                
+                # Also patch the Matrix class
+                mock_matrix = MagicMock()
+                mock_fitz.Matrix.return_value = mock_matrix
+                
+                # Patch the actual fitz module in sys.modules to use our mock
+                import sys
+                sys.modules['fitz'] = mock_fitz
+                
+                # Call the method
+                with caplog.at_level(logging.DEBUG):
+                    images = preprocessor.pdf_to_images(str(fake_pdf_path))
+                    
+                    # Log the actual document state for debugging
+                    logger.debug(f"Mock document page count: {mock_doc.page_count}")
+                    logger.debug(f"Mock document len: {len(mock_doc)}")
+                    logger.debug(f"Mock document has load_page: {hasattr(mock_doc, 'load_page')}")
+                    logger.debug(f"Mock document has __iter__: {hasattr(mock_doc, '__iter__')}")
+                    logger.debug(f"Mock document has __enter__: {hasattr(mock_doc, '__enter__')}")
+                    logger.debug(f"Mock document has __exit__: {hasattr(mock_doc, '__exit__')}")
+                
+                # Verify the results
+                assert len(images) == 1, f"Expected 1 image, got {len(images)}. Logs: {caplog.text}"
+                assert isinstance(images[0], Image.Image)
+                
+                # Verify the mocks were called as expected
+                mock_fitz.open.assert_called_once_with(str(fake_pdf_path))
+                
+                # Verify load_page was called with the correct argument
+                assert len(mock_doc.load_page_calls) == 1, f"Expected load_page to be called once, but was called {len(mock_doc.load_page_calls)} times"
+                assert mock_doc.load_page_calls[0] == 0, f"Expected load_page to be called with 0, but was called with {mock_doc.load_page_calls[0]}"
+                mock_page.get_pixmap.assert_called_once_with(matrix=mock_matrix)
+                mock_pix.tobytes.assert_called_once_with("ppm")
+                assert mock_doc.close_calls == 1, f"Expected close to be called once, but was called {mock_doc.close_calls} times"
 
     def test_pdf_to_images_failure(self, preprocessor, temp_dir):
         """Test PDF to images conversion failure"""
         fake_pdf_path = temp_dir / "fake.pdf"
         fake_pdf_path.write_bytes(b"not a real pdf")
-
+        
         # Mock both pdf2image and PyMuPDF to fail
         with patch("src.core.preprocessor.convert_from_path", side_effect=Exception("pdf2image failed")):
             with patch("src.core.preprocessor.fitz.open", side_effect=Exception("PyMuPDF failed")):

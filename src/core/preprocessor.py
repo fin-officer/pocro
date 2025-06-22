@@ -2,6 +2,7 @@
 Image preprocessing for invoice OCR
 """
 
+import io
 import logging
 from typing import List, Union
 
@@ -223,24 +224,58 @@ class InvoicePreprocessor:
 
             # Fallback to PyMuPDF
             try:
+                logger.debug(f"Opening PDF with PyMuPDF: {pdf_path}")
                 doc = fitz.open(pdf_path)
                 images = []
-
+                
+                # Log detailed document information
+                logger.debug(f"PDF type: {type(doc).__name__}")
+                logger.debug(f"PDF dir: {dir(doc)}")
+                logger.debug(f"PDF has {len(doc)} pages")
+                logger.debug(f"PDF page_count: {getattr(doc, 'page_count', 'N/A')}")
+                
+                # Log document attributes that might affect iteration
+                logger.debug(f"PDF has __len__: {hasattr(doc, '__len__')}")
+                logger.debug(f"PDF has __getitem__: {hasattr(doc, '__getitem__')}")
+                logger.debug(f"PDF has __iter__: {hasattr(doc, '__iter__')}")
+                
+                try:
+                    # Try to get the document's string representation
+                    logger.debug(f"PDF string representation: {str(doc)[:200]}...")
+                except Exception as e:
+                    logger.debug(f"Could not get PDF string representation: {e}")
+                
                 for page_num in range(len(doc)):
-                    page = doc.load_page(page_num)
-
-                    # Create transformation matrix for DPI
-                    zoom = dpi / 72.0  # 72 is default DPI
-                    mat = fitz.Matrix(zoom, zoom)
-
-                    # Render page to pixmap
-                    pix = page.get_pixmap(matrix=mat)
-
-                    # Convert to PIL Image
-                    img_data = pix.tobytes("ppm")
-                    img = Image.open(io.BytesIO(img_data))
-                    images.append(img)
-
+                    try:
+                        logger.debug(f"Processing page {page_num}")
+                        logger.debug(f"Calling load_page({page_num})...")
+                        page = doc.load_page(page_num)
+                        logger.debug(f"Got page: {page}")
+                        
+                        # Create transformation matrix for DPI
+                        zoom = dpi / 72.0  # 72 is default DPI
+                        mat = fitz.Matrix(zoom, zoom)
+                        logger.debug(f"Created transformation matrix: {mat}")
+                        
+                        # Render page to pixmap
+                        logger.debug("Getting pixmap...")
+                        pix = page.get_pixmap(matrix=mat)
+                        logger.debug(f"Got pixmap: {pix.width}x{pix.height}")
+                        
+                        # Convert to PIL Image
+                        logger.debug("Converting to PPM...")
+                        img_data = pix.tobytes("ppm")
+                        logger.debug(f"Got PPM data: {len(img_data)} bytes")
+                        
+                        logger.debug("Creating PIL Image...")
+                        img = Image.open(io.BytesIO(img_data))
+                        images.append(img)
+                        logger.debug(f"Added image {len(images)} to results")
+                        
+                    except Exception as page_error:
+                        logger.error(f"Error processing page {page_num}: {page_error}")
+                        continue
+                
                 doc.close()
                 logger.info(f"Converted PDF to {len(images)} images using PyMuPDF")
                 return images
