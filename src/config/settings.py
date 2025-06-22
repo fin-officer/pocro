@@ -8,7 +8,7 @@ from typing import Any, ClassVar, Dict, List, Optional
 
 from dotenv import load_dotenv
 from pydantic import Field, validator
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Load environment variables from .env file
 load_dotenv()

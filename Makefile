@@ -49,6 +49,11 @@ clean:
 	rm -rf build/ dist/ htmlcov/ .coverage .pytest_cache/
 
 # Local development
+restart:
+	sudo lsof -ti:8000 | xargs -r sudo kill
+	sleep 2
+	bash scripts/start.sh &
+
 build:
 	poetry version patch
 	poetry build
