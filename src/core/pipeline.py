@@ -3,17 +3,31 @@ Main processing pipeline for European Invoice OCR
 """
 
 import asyncio
+import json
 import logging
 import os
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import cv2
 import numpy as np
 from fastapi import UploadFile
 from PIL import Image
+
+
+def convert_numpy_types(obj: Any) -> Any:
+    """Recursively convert numpy types to native Python types for JSON serialization."""
+    if isinstance(obj, (np.integer, np.floating, np.bool_)):
+        return obj.item()
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {k: convert_numpy_types(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_numpy_types(item) for item in obj]
+    return obj
 
 from src.config.settings import AppSettings as Settings
 from src.core.llm_processor import LLMProcessor
@@ -225,15 +239,17 @@ class EuropeanInvoiceProcessor:
             # Step 7: Merge table data with LLM data
             merged_data = self._merge_extraction_results(structured_data, line_items, tables)
 
-            return {
+            # Convert all numpy types to native Python types for JSON serialization
+            result = {
                 "page_id": page_id,
-                "ocr_result": ocr_result,
-                "tables": tables,
-                "line_items": line_items,
+                "ocr_result": convert_numpy_types(ocr_result),
+                "tables": convert_numpy_types(tables),
+                "line_items": convert_numpy_types(line_items),
                 "detected_language": detected_language,
-                "structured_data": merged_data,
-                "quality_metrics": self._calculate_quality_metrics(ocr_result, structured_data),
+                "structured_data": convert_numpy_types(merged_data),
+                "quality_metrics": convert_numpy_types(self._calculate_quality_metrics(ocr_result, structured_data)),
             }
+            return result
 
         except Exception as e:
             logger.error(f"Error processing {page_id}: {e}")

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pocro"
-version = "0.1.4"
+version = "0.1.5"
 description = "European Invoice OCR and Data Extraction Tool"
 authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
@@ -28,7 +28,8 @@ Pillow = "10.4.0"  # Updated to a more recent version that might be more compati
 transformers = "4.35.0"
 torch = "2.1.0"
 torchvision = "0.16.0"
-vllm = "0.2.2"
+# Temporarily disabling vllm as it's causing dependency conflicts
+# vllm = "0.2.2"
 bitsandbytes = "0.41.2.post2"
 accelerate = "0.24.1"
 
