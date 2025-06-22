@@ -19,8 +19,8 @@ source .venv/bin/activate  # Linux/macOS
 # lub
 .venv\Scripts\activate    # Windows
 
-# Zainstaluj wymagane pakiety (jeśli jeszcze nie są zainstalowane)
-pip install -r requirements.txt
+# Zainstaluj zależności używając Poetry:
+poetry install
 ```
 
 ## Krok 2: Przygotowanie pliku faktury

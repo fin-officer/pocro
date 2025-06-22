@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pocro"
-version = "0.1.2"
+version = "0.1.4"
 description = "European Invoice OCR and Data Extraction Tool"
 authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
@@ -76,6 +76,7 @@ jupyter = "1.0.0"
 
 [tool.poetry.scripts]
 start = "src.main:main"
+pocro = "src.cli:cli"
 
 [tool.black]
 line-length = 120

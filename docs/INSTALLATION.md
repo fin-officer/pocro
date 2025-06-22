@@ -2,6 +2,17 @@
 
 Ten przewodnik przeprowadzi Cię przez proces konfiguracji systemu do przetwarzania faktur z wykorzystaniem OCR i LLM.
 
+## Spis treści
+- [Wymagania wstępne](#wymagania-wstępne)
+- [Szybki start](#szybki-start)
+- [Instalacja krok po kroku](#instalacja-krok-po-kroku)
+- [Konfiguracja](#konfiguracja)
+- [Weryfikacja instalacji](#weryfikacja-instalacji)
+- [Rozwiązywanie problemów](#rozwiązywanie-problemów)
+- [Dodatkowe zasoby](#dodatkowe-zasoby)
+
+> **Uwaga:** W razie problemów z instalacją, zapoznaj się z [przewodnikiem rozwiązywania problemów](./TROUBLESHOOTING.md).
+
 ## Wymagania wstępne
 
 - Python 3.10+
@@ -67,12 +78,27 @@ Kluczowe opcje konfiguracyjne w pliku `.env`:
 - `MODEL_NAME` - Nazwa modelu z Hugging Face (np. `facebook/opt-125m`)
 - `QUANTIZATION` - Metoda kwantyzacji modelu (domyślnie: `awq`)
 - `MAX_MODEL_LENGTH` - Maksymalna długość generowanego tekstu (domyślnie: `2048`)
-- `TEMPERATURE` - Parametr temperatury generowania (domyślnie: `0.7`)
+- `TEMPERATURE` - Parametr temperatury generowania
 
-#### Konfiguracja OCR
-- `OCR_ENGINE` - Silnik OCR do użycia (`easyocr` lub `paddleocr`)
-- `OCR_LANGUAGES` - Obsługiwane języki (domyślnie: `pl,en,de`)
-- `OCR_GPU` - Czy używać akceleracji GPU (domyślnie: `True`)
+### Przetwarzanie faktur
+
+Aby przetworzyć fakturę, użyj komendy `pocro`:
+
+```bash
+# Przetwarzanie pojedynczej faktury
+pocro process ścieżka/do/faktura.pdf
+
+# Z określonym plikiem wyjściowym
+pocro process ścieżka/do/faktura.pdf --output wynik.json
+
+# Wyświetlenie pomocy
+pocro --help
+pocro process --help
+```
+
+Dostępne opcje dla komendy `process`:
+- `--output`, `-o`: Określa plik wyjściowy (domyślnie: `<nazwa_pliku_wejsciowego>.json`)
+- `--format`, `-f`: Format wyjściowy (`json` lub `csv`, domyślnie: `json`)
 
 #### Konfiguracja serwera
 - `HOST` - Adres, na którym ma działać serwer (domyślnie: `0.0.0.0`)
@@ -172,7 +198,7 @@ CACHE_DIR=./.cache
 - **Brak modułów Pythona**
   ```bash
   # Zainstaluj brakujące zależności
-  pip install -r requirements.txt
+  poetry install
   ```
 
 - **Błąd ładowania modelu**
@@ -195,7 +221,7 @@ CACHE_DIR=./.cache
   rm -rf .venv
   python -m venv .venv
   source .venv/bin/activate
-  pip install -r requirements.txt
+  poetry install
   ```
 
 W przypadku dalszych problemów, zapoznaj się z przewodnikiem [Rozwiązywanie problemów](./TROUBLESHOOTING.md).

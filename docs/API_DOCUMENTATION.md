@@ -1,8 +1,23 @@
-# API Documentation
+# Dokumentacja API
 
-This document provides detailed information about the European Invoice OCR API endpoints, request/response formats, and usage examples.
+Ten dokument zawiera szczegółowe informacje o dostępnych endpointach API do przetwarzania faktur, formatach żądań i odpowiedzi oraz przykłady użycia.
 
-## Base URL
+## Spis treści
+- [Podstawowy adres URL](#podstawowy-adres-url)
+- [Uwierzytelnianie](#uwierzytelnianie)
+- [Endpointy](#endpointy)
+  - [Sprawdzenie stanu](#sprawdzenie-stanu)
+  - [Przetwarzanie faktury](#przetwarzanie-faktury)
+  - [Pobieranie wyników](#pobieranie-wyników)
+- [Kody błędów](#kody-błędów)
+- [Przykłady użycia](#przykłady-użycia)
+- [Ograniczenia i limity](#ograniczenia-i-limity)
+- [Rozwiązywanie problemów](#rozwiązywanie-problemów)
+- [Więcej informacji](#więcej-informacji)
+
+> **Uwaga:** W razie problemów z API, zapoznaj się z [przewodnikiem rozwiązywania problemów](./TROUBLESHOOTING.md).
+
+## Podstawowy adres URL
 
 All API endpoints are relative to the base URL:
 ```

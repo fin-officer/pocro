@@ -152,8 +152,6 @@ Domyślnie logi są zapisywane w pliku `logs/app.log`. Sprawdź je w poszukiwani
 
 Zainstaluj wymagane pakiety:
 ```bash
-pip install -r requirements.txt
-# lub
 poetry install
 ```
 
@@ -198,7 +196,7 @@ Jeśli wypróbowałeś powyższe rozwiązania i nadal występują problemy:
 ### Sprawdzanie wersji Pythona i pakietów
 ```bash
 python --version
-pip list | grep -E "torch|transformers|fastapi"
+poetry show
 ```
 
 ### Czyszczenie pamięci podręcznej PyTorch
@@ -219,15 +217,13 @@ du -sh ~/.cache/torch/
 rm -rf .venv
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+poetry install
 ```
 
 ### Aktualizacja zależności
 ```bash
 # Zaktualizuj wszystkie zależności do najnowszych wersji
 poetry update
-# lub
-pip install --upgrade -r requirements.txt
 ```
 
 ## Wsparcie
