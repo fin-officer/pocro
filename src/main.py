@@ -104,8 +104,13 @@ async def process_invoice(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"Unsupported file format. Allowed: {allowed_extensions}")
 
     try:
-        # Process the invoice
-        result = await processor.process_invoice_upload(file)
+        # Read file content
+        file_content = await file.read()
+        if not file_content:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+        # Process the invoice with file content
+        result = await processor.process_invoice_upload(file_content, file.filename)
 
         return {
             "status": "success",
@@ -114,6 +119,9 @@ async def process_invoice(file: UploadFile = File(...)):
             "processing_time": result.get("processing_time", 0),
         }
 
+    except HTTPException:
+        # Re-raise HTTP exceptions as they are
+        raise
     except Exception as e:
         logger.error(f"Error processing invoice {file.filename}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")

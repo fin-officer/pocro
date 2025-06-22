@@ -11,9 +11,10 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+import aiofiles
 import cv2
 import numpy as np
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException
 from PIL import Image
 
 
@@ -95,12 +96,13 @@ class EuropeanInvoiceProcessor:
             logger.error(f"Failed to initialize components: {e}")
             raise
 
-    async def process_invoice_upload(self, file: UploadFile) -> Dict[str, Any]:
+    async def process_invoice_upload(self, file_content: bytes, filename: str) -> Dict[str, Any]:
         """
-        Process uploaded invoice file
+        Process uploaded invoice file content
 
         Args:
-            file: Uploaded file
+            file_content: Raw file content as bytes
+            filename: Original filename
 
         Returns:
             Processing result
@@ -109,21 +111,52 @@ class EuropeanInvoiceProcessor:
         temp_file_path = None
 
         try:
-            # Save uploaded file temporarily
-            temp_file_path = await save_temp_file(file, self.settings.temp_dir)
-
+            if not file_content:
+                raise ValueError("Uploaded file is empty")
+            
+            # Create temp directory if it doesn't exist
+            os.makedirs(self.settings.temp_dir, exist_ok=True)
+            
+            # Generate a temporary file path with the correct extension
+            file_ext = os.path.splitext(filename or '')[-1] or '.tmp'
+            temp_file_path = os.path.join(
+                self.settings.temp_dir, 
+                f"temp_{os.urandom(8).hex()}{file_ext}"
+            )
+            
+            # Write content to temp file
+            try:
+                async with aiofiles.open(temp_file_path, 'wb') as f:
+                    await f.write(file_content)
+                
+                # Verify the file was written correctly
+                file_size = os.path.getsize(temp_file_path)
+                if file_size == 0:
+                    raise RuntimeError("Failed to write file content - file is empty")
+                    
+                logger.info(f"Successfully wrote {file_size} bytes to {temp_file_path} (original: {filename})")
+logger.debug(f"Temp file path: {temp_file_path}, extension: {file_ext}")
+                
+            except Exception as e:
+                logger.error(f"Error writing to temp file {temp_file_path}: {str(e)}")
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+                raise RuntimeError(f"Failed to save uploaded file: {str(e)}")
+            
             # Process the invoice
+            logger.info(f"Starting invoice processing for {filename}")
+logger.debug(f"Processing file at: {temp_file_path}")
             result = await self.process_invoice_file(temp_file_path)
 
             # Add metadata
-            result["filename"] = file.filename
+            result["filename"] = filename
             result["processing_time"] = time.time() - start_time
-            result["file_size"] = file.size if hasattr(file, "size") else 0
 
-            # Update statistics
+            # Update stats
             self._update_stats(True, result["processing_time"])
 
-            logger.info(f"Successfully processed {file.filename} in {result['processing_time']:.2f}s")
+            logger.info(f"Successfully processed {filename} in {result['processing_time']:.2f}s")
+logger.debug(f"Extraction result summary for {filename}: "+str({k: result.get(k) for k in ['status','pages_processed','extracted_data']}))
             return result
 
         except Exception as e:
@@ -136,11 +169,12 @@ class EuropeanInvoiceProcessor:
 
             self._update_stats(False, time.time() - start_time)
             logger.error(f"Failed to process {file.filename}: {e}")
+logger.debug(f"Error details: {repr(e)}; temp_file_path: {temp_file_path}")
             return error_result
 
         finally:
             # Cleanup temporary file
-            if temp_file_path:
+            if temp_file_path and os.path.exists(temp_file_path):
                 await cleanup_temp_file(temp_file_path)
 
     async def process_invoice_file(self, file_path: str) -> Dict[str, Any]:
@@ -155,6 +189,7 @@ class EuropeanInvoiceProcessor:
         """
         try:
             logger.info(f"Processing invoice file: {file_path}")
+start_time = time.time()
 
             # Step 1: Convert PDF to images if needed
             images = await self._load_invoice_images(file_path)
@@ -162,7 +197,7 @@ class EuropeanInvoiceProcessor:
             # Step 2: Process each page/image
             all_results = []
             for i, image in enumerate(images):
-                logger.debug(f"Processing page {i+1}/{len(images)}")
+                logger.debug(f"Processing page {i+1}/{len(images)} (file: {file_path})")
 
                 page_result = await self._process_single_image(image, f"page_{i+1}")
                 all_results.append(page_result)
@@ -170,15 +205,20 @@ class EuropeanInvoiceProcessor:
             # Step 3: Combine results from all pages
             combined_result = self._combine_page_results(all_results)
 
-            return {
-                "status": "success",
-                "pages_processed": len(images),
-                "extracted_data": combined_result,
-                "page_results": all_results,
-            }
+            duration = time.time() - start_time
+logger.info(f"Processed {file_path} in {duration:.2f}s; pages: {len(images)}")
+logger.debug(f"Combined extraction result: {str(combined_result)[:500]}...")
+return {
+    "status": "success",
+    "pages_processed": len(images),
+    "extracted_data": combined_result,
+    "page_results": all_results,
+    "processing_time": duration,
+}    }
 
         except Exception as e:
             logger.error(f"Error processing invoice file {file_path}: {e}")
+logger.debug(f"Error details: {repr(e)}")
             raise
 
     async def _load_invoice_images(self, file_path: str) -> List[np.ndarray]:
@@ -190,7 +230,7 @@ class EuropeanInvoiceProcessor:
                 # Convert PDF to images
                 pil_images = self.preprocessor.pdf_to_images(file_path)
                 images = [np.array(img) for img in pil_images]
-                logger.debug(f"Converted PDF to {len(images)} images")
+                logger.debug(f"Converted PDF to {len(images)} images from {file_path}")
 
             elif file_ext in [".jpg", ".jpeg", ".png", ".tiff", ".bmp"]:
                 # Load single image
@@ -198,7 +238,7 @@ class EuropeanInvoiceProcessor:
                 if image is None:
                     raise ValueError(f"Could not load image from {file_path}")
                 images = [image]
-                logger.debug("Loaded single image")
+                logger.debug(f"Loaded single image from {file_path}")
 
             else:
                 raise ValueError(f"Unsupported file format: {file_ext}")

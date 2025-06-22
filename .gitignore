@@ -3,7 +3,10 @@
 .png
 .jpg
 .jpeg
+.txt
+.json
 venv
+.venv*
 poetry.lock
 # Python
 __pycache__/
