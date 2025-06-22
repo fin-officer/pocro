@@ -4,7 +4,7 @@ Unit tests for image preprocessor
 
 import os
 import tempfile
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import cv2
 import numpy as np
@@ -226,26 +226,44 @@ class TestInvoicePreprocessor:
         with patch("src.core.preprocessor.convert_from_path", side_effect=Exception("pdf2image failed")):
             with patch("src.core.preprocessor.fitz") as mock_fitz:
                 # Mock PyMuPDF document
-                mock_doc = Mock()
-                mock_page = Mock()
-                mock_pix = Mock()
+                mock_doc = MagicMock()
+                mock_page = MagicMock()
+                mock_pix = MagicMock()
 
+                # Set up the mock document to have a length of 1
                 mock_doc.__len__.return_value = 1
                 mock_doc.load_page.return_value = mock_page
+
+                # Mock the pixmap
                 mock_page.get_pixmap.return_value = mock_pix
                 mock_pix.tobytes.return_value = b"fake image data"
 
-                mock_fitz.open.return_value = mock_doc
+                # Mock the context manager behavior of fitz.open
+                mock_fitz.open.return_value.__enter__.return_value = mock_doc
 
-                # Mock PIL Image.open
+                # Mock PIL Image.open to return a new image
                 with patch("PIL.Image.open") as mock_image_open:
                     mock_image = Image.new("RGB", (800, 600), color="white")
                     mock_image_open.return_value = mock_image
 
-                    images = preprocessor.pdf_to_images(str(fake_pdf_path))
+                    # Also mock BytesIO for the image data
+                    with patch("io.BytesIO") as mock_bytes_io:
+                        mock_file = MagicMock()
+                        mock_bytes_io.return_value = mock_file
+                        mock_file.__enter__.return_value = mock_file
 
-                    assert len(images) == 1
-                    assert isinstance(images[0], Image.Image)
+                        # Call the method
+                        images = preprocessor.pdf_to_images(str(fake_pdf_path))
+
+                        # Verify the results
+                        assert len(images) == 1
+                        assert isinstance(images[0], Image.Image)
+
+                        # Verify the mocks were called as expected
+                        mock_fitz.open.assert_called_once()
+                        mock_doc.load_page.assert_called_once_with(0)
+                        mock_page.get_pixmap.assert_called_once()
+                        mock_pix.tobytes.assert_called_once_with("ppm")
 
     def test_pdf_to_images_failure(self, preprocessor, temp_dir):
         """Test PDF to images conversion failure"""

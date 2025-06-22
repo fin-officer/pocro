@@ -49,18 +49,28 @@ class InvoiceValidator:
             "DK": "DKK",
         }
 
-    def validate_invoice(self, invoice_data: Dict[str, Any]) -> InvoiceValidationResult:
+    def validate_invoice(self, invoice_data: Optional[Dict[str, Any]]) -> InvoiceValidationResult:
         """
         Comprehensive validation of invoice data
 
         Args:
-            invoice_data: Raw invoice data dictionary
+            invoice_data: Raw invoice data dictionary or None
 
         Returns:
             Validation result with errors and scores
         """
         errors = []
         warnings = []
+
+        if invoice_data is None:
+            errors.append(ValidationError(field="invoice_data", message="Input data cannot be None", value=None))
+            return InvoiceValidationResult(
+                is_valid=False,
+                errors=errors,
+                warnings=warnings,
+                completeness_score=0.0,
+                confidence_score=0.0,
+            )
 
         try:
             # Try to create InvoiceData object for Pydantic validation
@@ -92,12 +102,33 @@ class InvoiceValidator:
         """Extract validation errors from Pydantic exception"""
         errors = []
 
+        # Handle case where we get a string error about InvoiceItem not being subscriptable
+        error_msg = str(exception)
+        if "'InvoiceItem' object is not subscriptable" in error_msg:
+            # This typically happens when trying to access dictionary-style on a model instance
+            # We'll return a more helpful error message
+            return [
+                ValidationError(
+                    field="invoice_lines", message="Error processing line items - invalid data structure", value=None
+                )
+            ]
+
+        # Handle standard Pydantic validation errors
         if hasattr(exception, "errors"):
             for error in exception.errors():
-                field_path = ".".join(str(loc) for loc in error["loc"])
-                errors.append(ValidationError(field=field_path, message=error["msg"], value=error.get("input")))
+                # Safely get location and message with fallbacks
+                loc = error.get("loc", ())
+                field_path = ".".join(str(loc) for loc in loc) if loc else "unknown_field"
+                msg = error.get("msg", "Validation error occurred")
+
+                # Handle specific error cases
+                if "not a valid dict" in msg and "InvoiceItem" in msg:
+                    msg = "Invalid line item format - expected a dictionary with required fields"
+
+                errors.append(ValidationError(field=field_path, message=msg, value=error.get("input")))
         else:
-            errors.append(ValidationError(field="general", message=str(exception), value=None))
+            # For any other type of exception, include the full error message
+            errors.append(ValidationError(field="general", message=f"Validation error: {error_msg}", value=None))
 
         return errors
 
@@ -114,8 +145,10 @@ class InvoiceValidator:
 
         # Validate VAT IDs
         supplier = invoice_data.get("supplier", {})
-        if supplier.get("vat_id"):
-            if not self._validate_vat_id(supplier["vat_id"], supplier.get("country_code")):
+        if isinstance(supplier, dict) and supplier.get("vat_id"):
+            if not self._validate_vat_id(
+                supplier["vat_id"], supplier.get("country_code") if isinstance(supplier, dict) else None
+            ):
                 errors.append(
                     ValidationError(
                         field="supplier.vat_id", message="Supplier VAT ID format is invalid", value=supplier["vat_id"]
@@ -123,8 +156,10 @@ class InvoiceValidator:
                 )
 
         customer = invoice_data.get("customer", {})
-        if customer.get("vat_id"):
-            if not self._validate_vat_id(customer["vat_id"], customer.get("country_code")):
+        if isinstance(customer, dict) and customer.get("vat_id"):
+            if not self._validate_vat_id(
+                customer["vat_id"], customer.get("country_code") if isinstance(customer, dict) else None
+            ):
                 errors.append(
                     ValidationError(
                         field="customer.vat_id", message="Customer VAT ID format is invalid", value=customer["vat_id"]
@@ -142,23 +177,66 @@ class InvoiceValidator:
 
         return errors
 
+    def _get_default_currency(self, country_code: str) -> Optional[str]:
+        """Get the default currency for a given country code
+
+        Args:
+            country_code: ISO 2-letter country code
+
+        Returns:
+            Default currency code (3 letters) or None if not found
+        """
+        if not country_code or not isinstance(country_code, str):
+            return None
+
+        # Convert to uppercase for case-insensitive matching
+        country_code = country_code.upper()
+
+        # Return the currency code if the country is found, otherwise None
+        return self.country_currencies.get(country_code)
+
     def _validate_business_warnings(self, invoice_data: Dict[str, Any]) -> List[str]:
-        """Generate business logic warnings"""
+        """Generate business logic warnings
+
+        Args:
+            invoice_data: The invoice data to validate
+
+        Returns:
+            List of warning messages
+        """
         warnings = []
 
-        # Check currency consistency
-        supplier_country = invoice_data.get("supplier", {}).get("country_code")
-        currency = invoice_data.get("currency_code")
+        # Safely get supplier and customer data with type checking
+        supplier = invoice_data.get("supplier", {})
+        customer = invoice_data.get("customer", {})
 
-        if supplier_country and currency:
-            expected_currency = self.country_currencies.get(supplier_country)
-            if expected_currency and expected_currency != currency:
+        # Only proceed with country/currency checks if supplier is a dict with country_code
+        supplier_country = None
+        if isinstance(supplier, dict):
+            supplier_country = supplier.get("country_code")
+
+        customer_country = None
+        if isinstance(customer, dict):
+            customer_country = customer.get("country_code")
+
+        invoice_currency = invoice_data.get("currency_code")
+
+        # Currency consistency check
+        if supplier_country and invoice_currency:
+            default_currency = self._get_default_currency(supplier_country)
+            if default_currency and invoice_currency != default_currency:
                 warnings.append(
-                    f"Currency {currency} is unusual for country {supplier_country}, " f"expected {expected_currency}"
+                    f"Invoice currency {invoice_currency} differs from supplier's default currency {default_currency}"
                 )
 
+        # Check for missing fields
+        required_fields = ["invoice_date", "due_date", "total_amount"]
+        for field in required_fields:
+            if field not in invoice_data:
+                warnings.append(f"Missing recommended field: {field}")
+
         # Check for missing optional but important fields
-        if not invoice_data.get("customer", {}).get("vat_id"):
+        if not (isinstance(customer, dict) and customer.get("vat_id")):
             warnings.append("Customer VAT ID is missing")
 
         if not invoice_data.get("purchase_order_reference"):
@@ -171,9 +249,23 @@ class InvoiceValidator:
 
         return warnings
 
-    def _validate_invoice_number(self, invoice_id: str) -> bool:
-        """Validate invoice number format"""
-        if not invoice_id or len(invoice_id) < 3:
+    def _validate_invoice_number(self, invoice_id: Any) -> bool:
+        """Validate invoice number format
+
+        Args:
+            invoice_id: The invoice ID to validate (can be any type, but should be a string)
+
+        Returns:
+            bool: True if the invoice ID is valid, False otherwise
+        """
+        if invoice_id is None:
+            return False
+
+        # Convert to string if it's not already
+        try:
+            invoice_str = str(invoice_id)
+            return len(invoice_str) >= 3
+        except (TypeError, ValueError):
             return False
 
         # Common invoice number patterns
@@ -290,17 +382,23 @@ class InvoiceValidator:
         invoice_lines = invoice_data.get("invoice_lines", [])
 
         for i, line in enumerate(invoice_lines):
-            if not isinstance(line, dict):
+            if not isinstance(line, (dict, object)):
                 errors.append(
                     ValidationError(field=f"invoice_lines.{i}", message="Line item must be an object", value=line)
                 )
                 continue
 
+            # Helper function to get attribute safely from either dict or object
+            def get_attr(obj, attr, default=None):
+                if isinstance(obj, dict):
+                    return obj.get(attr, default)
+                return getattr(obj, attr, default)
+
             # Validate line calculations
             try:
-                quantity = self._safe_decimal_conversion(line.get("quantity", 0))
-                unit_price = self._safe_decimal_conversion(line.get("unit_price", 0))
-                line_total = self._safe_decimal_conversion(line.get("line_total", 0))
+                quantity = self._safe_decimal_conversion(get_attr(line, "quantity", 0))
+                unit_price = self._safe_decimal_conversion(get_attr(line, "unit_price", 0))
+                line_total = self._safe_decimal_conversion(get_attr(line, "line_total", 0))
 
                 calculated_total = quantity * unit_price
                 if abs(calculated_total - line_total) > Decimal("0.01"):
@@ -317,17 +415,18 @@ class InvoiceValidator:
                     ValidationError(
                         field=f"invoice_lines.{i}",
                         message=f"Error validating line item calculations: {str(e)}",
-                        value=line,
+                        value=str(line) if hasattr(line, "__dict__") else line,
                     )
                 )
 
             # Validate required fields
-            if not line.get("description", "").strip():
+            description = get_attr(line, "description", "")
+            if not (isinstance(description, str) and description.strip()):
                 errors.append(
                     ValidationError(
                         field=f"invoice_lines.{i}.description",
                         message="Line item description is required",
-                        value=line.get("description"),
+                        value=description,
                     )
                 )
 
@@ -335,6 +434,7 @@ class InvoiceValidator:
 
     def _calculate_completeness_score(self, invoice_data: Dict[str, Any]) -> float:
         """Calculate data completeness score (0-1)"""
+        # Required fields (higher weight)
         required_fields = [
             "invoice_id",
             "issue_date",
@@ -342,72 +442,211 @@ class InvoiceValidator:
             "customer.name",
             "total_incl_vat",
             "currency_code",
+            "supplier.country_code",  # Moved up as it's crucial for validation
+            "customer.country_code",  # Moved up as it's crucial for validation
         ]
 
-        optional_important_fields = [
+        # Important but optional fields (medium weight)
+        important_fields = [
             "supplier.vat_id",
             "customer.vat_id",
-            "supplier.country_code",
-            "customer.country_code",
+            "supplier.address_line",
+            "customer.address_line",
             "invoice_lines",
             "total_excl_vat",
             "total_vat",
+            "payable_amount",
         ]
 
-        total_fields = len(required_fields) + len(optional_important_fields)
-        present_fields = 0
+        # Less critical fields (lower weight)
+        optional_fields = [
+            "supplier.city",
+            "supplier.postal_code",
+            "customer.city",
+            "customer.postal_code",
+            "purchase_order_reference",
+            "contract_reference",
+        ]
+
+        # Calculate weights
+        required_weight = 1.0
+        important_weight = 0.7
+        optional_weight = 0.3
+
+        total_score = 0.0
+        max_score = 0.0
 
         # Check required fields
         for field in required_fields:
+            max_score += required_weight
             if self._get_nested_value(invoice_data, field):
-                present_fields += 1
+                total_score += required_weight
 
-        # Check optional fields (half weight)
-        for field in optional_important_fields:
+        # Check important fields
+        for field in important_fields:
+            max_score += important_weight
             if self._get_nested_value(invoice_data, field):
-                present_fields += 0.5
+                total_score += important_weight
 
-        return min(present_fields / total_fields, 1.0)
+        # Check optional fields
+        for field in optional_fields:
+            max_score += optional_weight
+            if self._get_nested_value(invoice_data, field):
+                total_score += optional_weight
+
+        # Ensure we don't divide by zero and return a score between 0 and 1
+        if max_score == 0:
+            return 0.0
+
+        score = total_score / max_score
+        return min(max(score, 0.0), 1.0)
 
     def _calculate_confidence_score(self, invoice_data: Dict[str, Any]) -> float:
         """Calculate extraction confidence score (0-1)"""
-        score = 0.0
-        factors = 0
-
-        # OCR confidence if available
-        ocr_confidence = invoice_data.get("processing_metadata", {}).get("ocr_confidence")
-        if ocr_confidence is not None:
-            score += float(ocr_confidence)
-            factors += 1
-
-        # Data consistency factor
+        # Calculate base score as average of consistency and completeness
         consistency_score = self._calculate_consistency_score(invoice_data)
-        score += consistency_score
-        factors += 1
-
-        # Completeness factor
         completeness = self._calculate_completeness_score(invoice_data)
-        score += completeness
-        factors += 1
+        base_score = (consistency_score + completeness) / 2
 
-        return score / factors if factors > 0 else 0.0
+        # Get OCR confidence if available
+        ocr_confidence = invoice_data.get("processing_metadata", {}).get("ocr_confidence")
+
+        if ocr_confidence is not None:
+            ocr_confidence = float(ocr_confidence)
+            # Use the higher of: base score or a weighted average that includes OCR confidence
+            # This ensures OCR confidence can only increase or maintain the score
+            weighted_with_ocr = (ocr_confidence * 0.5) + (base_score * 0.5)
+            return max(base_score, weighted_with_ocr)
+
+        return base_score
 
     def _calculate_consistency_score(self, invoice_data: Dict[str, Any]) -> float:
-        """Calculate internal data consistency score"""
+        """Calculate internal data consistency score (0-1)"""
         score = 1.0
+        max_penalty = 0.0
+        penalties = []
 
-        # Check financial consistency
+        # Helper function to add penalties
+        def add_penalty(penalty: float, reason: str = ""):
+            nonlocal max_penalty
+            penalty = min(max(penalty, 0.0), 1.0)  # Ensure penalty is between 0 and 1
+            penalties.append((penalty, reason))
+            max_penalty = max(max_penalty, penalty)
+
+        # 1. Check financial consistency (totals add up correctly)
         try:
             total_excl_vat = self._safe_decimal_conversion(invoice_data.get("total_excl_vat", 0))
             total_vat = self._safe_decimal_conversion(invoice_data.get("total_vat", 0))
             total_incl_vat = self._safe_decimal_conversion(invoice_data.get("total_incl_vat", 0))
+            payable_amount = self._safe_decimal_conversion(invoice_data.get("payable_amount", 0))
 
             if total_incl_vat > 0:
+                # Check if total_incl_vat = total_excl_vat + total_vat
                 calculated_total = total_excl_vat + total_vat
-                difference = abs(calculated_total - total_incl_vat) / total_incl_vat
-                score -= min(difference * 2, 0.3)  # Max penalty 0.3
-        except:
-            score -= 0.2
+                if calculated_total != 0:
+                    difference = abs(calculated_total - total_incl_vat) / max(
+                        abs(calculated_total), abs(total_incl_vat)
+                    )
+                    penalty = min(difference * 2, 0.3)  # Max penalty 0.3
+                    if penalty > 0.01:  # Only add penalty if significant
+                        add_penalty(
+                            penalty,
+                            f"Total incl. VAT ({total_incl_vat}) doesn't match sum of net + VAT ({calculated_total})",
+                        )
+
+                # Check if payable_amount matches total_incl_vat (if provided)
+                if payable_amount > 0 and abs(payable_amount - total_incl_vat) > 0.01:
+                    penalty = 0.1  # Small penalty for mismatch
+                    add_penalty(
+                        penalty, f"Payable amount ({payable_amount}) doesn't match total incl. VAT ({total_incl_vat})"
+                    )
+        except Exception as e:
+            add_penalty(0.2, f"Error validating financial consistency: {str(e)}")
+
+        # 2. Check line items consistency
+        line_items = invoice_data.get("invoice_lines", [])
+        if line_items:
+            try:
+                # Calculate sum of line totals
+                line_totals_sum = sum(self._safe_decimal_conversion(item.get("line_total", 0)) for item in line_items)
+
+                # Compare with total_excl_vat if available
+                if total_excl_vat > 0 and line_totals_sum > 0:
+                    difference = abs(line_totals_sum - total_excl_vat) / max(line_totals_sum, total_excl_vat)
+                    if difference > 0.01:  # 1% tolerance
+                        penalty = min(difference * 0.5, 0.2)  # Max penalty 0.2
+                        add_penalty(
+                            penalty,
+                            f"Sum of line items ({line_totals_sum}) doesn't match total excl. VAT ({total_excl_vat})",
+                        )
+
+                # Check individual line calculations (quantity * unit_price = line_total)
+                for i, item in enumerate(line_items):
+                    try:
+                        qty = self._safe_decimal_conversion(item.get("quantity", 0))
+                        unit_price = self._safe_decimal_conversion(item.get("unit_price", 0))
+                        line_total = self._safe_decimal_conversion(item.get("line_total", 0))
+
+                        if qty > 0 and unit_price > 0 and line_total > 0:
+                            calculated = qty * unit_price
+                            if abs(calculated - line_total) > 0.01:  # Allow small floating point differences
+                                penalty = 0.05  # Small penalty per line
+                                add_penalty(
+                                    penalty,
+                                    f"Line {i+1}: Calculated total ({calculated}) doesn't match line_total ({line_total})",
+                                )
+                    except Exception as e:
+                        add_penalty(0.05, f"Error validating line item {i+1}: {str(e)}")
+
+            except Exception as e:
+                add_penalty(0.1, f"Error calculating line items consistency: {str(e)}")
+
+        # 3. Check VAT calculations if VAT rate is provided
+        try:
+            vat_breakdown = invoice_data.get("tax_breakdown", [])
+            if vat_breakdown:
+                for tax in vat_breakdown:
+                    taxable = self._safe_decimal_conversion(tax.get("taxable_amount", 0))
+                    tax_amount = self._safe_decimal_conversion(tax.get("tax_amount", 0))
+                    rate = self._safe_decimal_conversion(tax.get("tax_rate", 0))
+
+                    if taxable > 0 and rate > 0:
+                        calculated_tax = taxable * rate
+                        if abs(calculated_tax - tax_amount) > 0.01:  # Allow small differences
+                            penalty = 0.1
+                            add_penalty(
+                                penalty,
+                                f"VAT calculation error: {taxable} * {rate} should be {calculated_tax}, got {tax_amount}",
+                            )
+        except Exception as e:
+            add_penalty(0.1, f"Error validating VAT calculations: {str(e)}")
+
+        # 4. Check currency consistency
+        try:
+            currency = invoice_data.get("currency_code")
+            supplier_country = self._get_nested_value(invoice_data, "supplier.country_code")
+
+            if supplier_country and supplier_country in self.country_currencies:
+                expected_currency = self.country_currencies[supplier_country]
+                if currency != expected_currency:
+                    penalty = 0.1
+                    add_penalty(
+                        penalty,
+                        f"Currency {currency} doesn't match supplier country {supplier_country} (expected {expected_currency})",
+                    )
+        except Exception as e:
+            add_penalty(0.05, f"Error validating currency consistency: {str(e)}")
+
+        # Calculate final score (1 - total_penalty, but never below 0)
+        total_penalty = min(sum(p[0] for p in penalties), 0.99)  # Cap at 0.99 to avoid returning 0
+        final_score = max(1.0 - total_penalty, 0.01)  # Ensure we never return 0
+
+        # Log warnings for any penalties applied (in debug mode)
+        if penalties and logging.getLogger().isEnabledFor(logging.DEBUG):
+            for penalty, reason in penalties:
+                logging.debug(f"Consistency penalty ({penalty:.2f}): {reason}")
+
+        return final_score
 
         # Check line items consistency
         invoice_lines = invoice_data.get("invoice_lines", [])
@@ -429,36 +668,62 @@ class InvoiceValidator:
 
     def _safe_decimal_conversion(self, value: Any) -> Decimal:
         """Safely convert value to Decimal"""
+        if value is None:
+            return Decimal("0")
+
         if isinstance(value, Decimal):
             return value
 
         if isinstance(value, (int, float)):
             return Decimal(str(value))
 
-        if isinstance(value, str):
-            # Clean string value
-            cleaned = re.sub(r"[^\d.,\-]", "", value)
-            if not cleaned:
+        if not isinstance(value, str):
+            try:
+                value = str(value)
+            except:
                 return Decimal("0")
 
-            # Handle different decimal separators
-            if "," in cleaned and "." in cleaned:
+        # Clean string value - keep digits, decimal points, commas, and minus sign
+        cleaned = re.sub(r"[^\d.,\-]", "", value)
+        if not cleaned:
+            return Decimal("0")
+
+        # Handle negative numbers
+        is_negative = cleaned.startswith("-")
+        if is_negative:
+            cleaned = cleaned[1:]
+
+        # Check for thousands separators vs decimal separators
+        has_comma = "," in cleaned
+        has_dot = "." in cleaned
+
+        if has_comma and has_dot:
+            # Determine which is the thousands separator and which is decimal
+            if cleaned.find(",") > cleaned.find("."):
                 # European format: 1.234,56
                 cleaned = cleaned.replace(".", "").replace(",", ".")
-            elif "," in cleaned:
-                # Check if comma is decimal separator
-                parts = cleaned.split(",")
-                if len(parts) == 2 and len(parts[1]) <= 2:
-                    cleaned = cleaned.replace(",", ".")
-                else:
-                    cleaned = cleaned.replace(",", "")
+            else:
+                # US/UK format: 1,234.56
+                cleaned = cleaned.replace(",", "")
+        elif has_comma:
+            # Could be either European decimal or thousands separator
+            parts = cleaned.split(",")
+            if len(parts) == 2 and len(parts[1]) <= 2:
+                # Likely European decimal: 1234,56
+                cleaned = cleaned.replace(",", ".")
+            else:
+                # Likely thousands separator: 1,234
+                cleaned = cleaned.replace(",", "")
+        # If only dot, it's treated as decimal
 
-            try:
-                return Decimal(cleaned)
-            except InvalidOperation:
-                return Decimal("0")
+        # Restore negative sign if needed
+        if is_negative:
+            cleaned = f"-{cleaned}"
 
-        return Decimal("0")
+        try:
+            return Decimal(cleaned)
+        except (InvalidOperation, TypeError):
+            return Decimal("0")
 
     def _parse_date(self, date_str: str) -> Optional[date]:
         """Parse date string in various formats"""

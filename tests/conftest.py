@@ -504,6 +504,47 @@ def ocr_engine(request):
     return request.param
 
 
+# Test data fixtures
+@pytest.fixture
+def valid_invoice_data():
+    """Valid invoice data for testing"""
+    return {
+        "invoice_id": "INV-2024-001",
+        "issue_date": "2024-01-15",
+        "currency_code": "EUR",
+        "supplier": {
+            "name": "Test Company GmbH",
+            "vat_id": "DE123456789",
+            "country_code": "DE",
+            "address_line": "Test Street 123",
+            "city": "Test City",
+            "postal_code": "12345",
+        },
+        "customer": {
+            "name": "Customer Ltd",
+            "vat_id": "EE123456789",
+            "country_code": "EE",
+            "address_line": "Customer Road 456",
+            "city": "Customer City",
+            "postal_code": "54321",
+        },
+        "invoice_lines": [
+            {
+                "line_id": "1",
+                "description": "Software License",
+                "quantity": 1.0,
+                "unit_price": 100.00,
+                "line_total": 100.00,
+                "vat_rate": 0.19,
+            }
+        ],
+        "total_excl_vat": 100.00,
+        "total_vat": 19.00,
+        "total_incl_vat": 119.00,
+        "payable_amount": 119.00,
+    }
+
+
 # Utility functions for tests
 @pytest.fixture
 def create_test_upload_file(monkeypatch):

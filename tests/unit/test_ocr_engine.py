@@ -5,6 +5,18 @@ Unit tests for OCR engine
 from typing import Dict, List
 from unittest.mock import MagicMock, Mock, patch
 
+import pytest
+
+# Skip PaddleOCR tests if paddle is not available
+try:
+    import paddle  # noqa: F401
+
+    PADDLE_AVAILABLE = True
+except ImportError:
+    PADDLE_AVAILABLE = False
+
+skip_if_paddle_not_available = pytest.mark.skipif(not PADDLE_AVAILABLE, reason="PaddlePaddle is not installed")
+
 import cv2
 import numpy as np
 import pytest
@@ -12,11 +24,29 @@ import pytest
 from src.core.ocr_engine import EasyOCREngine, InvoiceOCREngine, PaddleOCREngine
 
 
+@pytest.fixture
+def sample_image():
+    """Create a sample invoice image"""
+    image = np.ones((800, 600, 3), dtype=np.uint8) * 255
+
+    # Add some text-like rectangles
+    cv2.rectangle(image, (50, 50), (300, 80), (0, 0, 0), -1)
+    cv2.rectangle(image, (50, 100), (200, 120), (0, 0, 0), -1)
+    cv2.rectangle(image, (400, 500), (550, 520), (0, 0, 0), -1)
+
+    # Add white text on black rectangles
+    cv2.putText(image, "INVOICE", (60, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    cv2.putText(image, "Date:", (60, 115), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    cv2.putText(image, "Total:", (410, 515), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+    return image
+
+
 class TestInvoiceOCREngine:
     """Test cases for InvoiceOCREngine class"""
 
     @pytest.fixture
-    def sample_image(self):
+    def mock_ocr_results(self):
         """Create a sample invoice image"""
         image = np.ones((800, 600, 3), dtype=np.uint8) * 255
 
@@ -55,17 +85,21 @@ class TestInvoiceOCREngine:
                 assert isinstance(engine.engine, EasyOCREngine)
                 mock_reader.assert_called_once_with(["en", "de"], gpu=True)
 
+    @pytest.mark.skipif(not PADDLE_AVAILABLE, reason="PaddlePaddle is not installed")
     def test_ocr_engine_initialization_paddleocr(self):
         """Test OCR engine initialization with PaddleOCR"""
         with patch("src.core.ocr_engine.PADDLEOCR_AVAILABLE", True):
-            with patch("src.core.ocr_engine.PaddleOCR") as mock_paddle:
+            with patch("paddleocr.PaddleOCR") as mock_paddle:
                 mock_paddle.return_value = Mock()
+                # Also patch the PaddleOCREngine to avoid actual initialization
+                with patch("src.core.ocr_engine.PaddleOCREngine") as mock_paddle_engine:
+                    mock_paddle_engine.return_value = Mock()
 
-                engine = InvoiceOCREngine(engine_type="paddleocr", languages=["en"])
+                    engine = InvoiceOCREngine(engine_type="paddleocr", languages=["en"])
 
-                assert engine.engine_type == "paddleocr"
-                assert engine.languages == ["en"]
-                assert isinstance(engine.engine, PaddleOCREngine)
+                    assert engine.engine_type == "paddleocr"
+                    assert engine.languages == ["en"]
+                    mock_paddle_engine.assert_called_once_with(languages=["en"])
 
     def test_ocr_engine_unsupported_engine(self):
         """Test OCR engine with unsupported engine type"""
@@ -307,20 +341,24 @@ class TestEasyOCREngine:
         assert result == []  # Should return empty list on failure
 
 
+@pytest.mark.skipif(not PADDLE_AVAILABLE, reason="PaddlePaddle is not installed")
 class TestPaddleOCREngine:
     """Test cases for PaddleOCR engine"""
 
     @patch("src.core.ocr_engine.PADDLEOCR_AVAILABLE", True)
-    @patch("src.core.ocr_engine.PaddleOCR")
+    @patch("paddleocr.PaddleOCR")
     def test_paddleocr_initialization(self, mock_paddle):
         """Test PaddleOCR engine initialization"""
-        mock_paddle.return_value = Mock()
+        # Mock the PaddleOCR class
+        mock_ocr_instance = Mock()
+        mock_ocr_instance.ocr.return_value = []
+        mock_paddle.return_value = mock_ocr_instance
 
         engine = PaddleOCREngine(languages=["en"])
 
         assert engine.languages == ["en"]
         assert engine.primary_lang == "en"
-        mock_paddle.assert_called_once()
+        mock_paddle.assert_called_once_with(use_angle_cls=True, lang="en", use_gpu=True, show_log=False)
 
     def test_paddleocr_not_available(self):
         """Test PaddleOCR engine when not available"""
@@ -329,7 +367,7 @@ class TestPaddleOCREngine:
                 PaddleOCREngine()
 
     @patch("src.core.ocr_engine.PADDLEOCR_AVAILABLE", True)
-    @patch("src.core.ocr_engine.PaddleOCR")
+    @patch("paddleocr.PaddleOCR")
     def test_paddleocr_language_mapping(self, mock_paddle):
         """Test PaddleOCR language mapping"""
         mock_paddle.return_value = Mock()
@@ -343,7 +381,7 @@ class TestPaddleOCREngine:
         assert engine.primary_lang == "es"
 
     @patch("src.core.ocr_engine.PADDLEOCR_AVAILABLE", True)
-    @patch("src.core.ocr_engine.PaddleOCR")
+    @patch("paddleocr.PaddleOCR")
     def test_paddleocr_extract_text(self, mock_paddle, sample_image):
         """Test text extraction with PaddleOCR"""
         mock_ocr_instance = Mock()
@@ -364,7 +402,7 @@ class TestPaddleOCREngine:
         assert result[0]["confidence"] == 0.95
 
     @patch("src.core.ocr_engine.PADDLEOCR_AVAILABLE", True)
-    @patch("src.core.ocr_engine.PaddleOCR")
+    @patch("paddleocr.PaddleOCR")
     def test_paddleocr_empty_results(self, mock_paddle, sample_image):
         """Test PaddleOCR with empty results"""
         mock_ocr_instance = Mock()

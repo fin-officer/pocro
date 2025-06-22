@@ -94,11 +94,21 @@ class InvoiceItem(BaseModel):
     @root_validator(skip_on_failure=True)
     def validate_line_total(cls, values):
         """Validate that line total matches quantity * unit price"""
-        expected_total = values["quantity"] * values["unit_price"]
-        if abs(float(values["line_total"]) - float(expected_total)) > 0.01:  # Allow for floating point errors
-            raise ValueError(
-                f'Line total {values["line_total"]} does not match quantity * unit price: {expected_total}'
-            )
+
+        # Helper function to get attribute safely from either dict or model
+        def get_attr(obj, attr, default=None):
+            if isinstance(obj, dict):
+                return obj.get(attr, default)
+            return getattr(obj, attr, default)
+
+        quantity = get_attr(values, "quantity")
+        unit_price = get_attr(values, "unit_price")
+        line_total = get_attr(values, "line_total")
+
+        if None not in [quantity, unit_price, line_total]:
+            expected_total = quantity * unit_price
+            if abs(float(line_total) - float(expected_total)) > 0.01:  # Allow for floating point errors
+                raise ValueError(f"Line total {line_total} does not match quantity * unit price: {expected_total}")
         return values
 
 
@@ -113,9 +123,21 @@ class TaxBreakdown(BaseModel):
     @root_validator(skip_on_failure=True)
     def validate_tax_calculation(cls, values):
         """Validate tax calculation"""
-        expected_tax = values["taxable_amount"] * values["tax_rate"]
-        if abs(float(values["tax_amount"]) - float(expected_tax)) > 0.01:  # Allow for floating point errors
-            raise ValueError(f'Tax amount {values["tax_amount"]} does not match taxable amount * rate: {expected_tax}')
+
+        # Helper function to get attribute safely from either dict or model
+        def get_attr(obj, attr, default=None):
+            if isinstance(obj, dict):
+                return obj.get(attr, default)
+            return getattr(obj, attr, default)
+
+        taxable_amount = get_attr(values, "taxable_amount")
+        tax_rate = get_attr(values, "tax_rate")
+        tax_amount = get_attr(values, "tax_amount")
+
+        if None not in [taxable_amount, tax_rate, tax_amount]:
+            expected_tax = taxable_amount * tax_rate
+            if abs(float(tax_amount) - float(expected_tax)) > 0.01:  # Allow for floating point errors
+                raise ValueError(f"Tax amount {tax_amount} does not match taxable amount * rate: {expected_tax}")
         return values
 
 
@@ -190,23 +212,44 @@ class InvoiceData(BaseModel):
     @root_validator(skip_on_failure=True)
     def validate_totals(cls, values):
         """Validate invoice totals consistency"""
-        if None not in [values.get("total_excl_vat"), values.get("total_vat"), values.get("total_incl_vat")]:
-            calculated_total = values["total_excl_vat"] + values["total_vat"]
-            if abs(float(values["total_incl_vat"]) - float(calculated_total)) > 0.01:  # Allow for floating point errors
+
+        # Helper function to get attribute safely from either dict or model
+        def get_attr(obj, attr, default=None):
+            if isinstance(obj, dict):
+                return obj.get(attr, default)
+            return getattr(obj, attr, default)
+
+        total_excl_vat = get_attr(values, "total_excl_vat")
+        total_vat = get_attr(values, "total_vat")
+        total_incl_vat = get_attr(values, "total_incl_vat")
+
+        if None not in [total_excl_vat, total_vat, total_incl_vat]:
+            calculated_total = total_excl_vat + total_vat
+            if abs(float(total_incl_vat) - float(calculated_total)) > 0.01:  # Allow for floating point errors
                 raise ValueError(
-                    f'Total incl. VAT {values["total_incl_vat"]} does not match total excl. VAT + VAT: {calculated_total}'
+                    f"Total incl. VAT {total_incl_vat} does not match total excl. VAT + VAT: {calculated_total}"
                 )
         return values
 
     @root_validator(skip_on_failure=True)
     def validate_line_items_total(cls, values):
         """Validate that line items sum matches document total"""
-        if values.get("invoice_lines") and values.get("total_excl_vat") is not None:
-            lines_total = sum(line["line_total"] for line in values["invoice_lines"])
-            if abs(float(values["total_excl_vat"]) - float(lines_total)) > 0.01:  # Allow for floating point errors
-                raise ValueError(
-                    f'Sum of line items ({lines_total}) does not match total excl. VAT ({values["total_excl_vat"]})'
-                )
+
+        # Helper function to get attribute safely from either dict or model
+        def get_attr(obj, attr, default=None):
+            if isinstance(obj, dict):
+                return obj.get(attr, default)
+            return getattr(obj, attr, default)
+
+        invoice_lines = get_attr(values, "invoice_lines", [])
+        total_excl_vat = get_attr(values, "total_excl_vat")
+
+        if invoice_lines and total_excl_vat is not None:
+            # Handle both dict and model instances for line items
+            lines_total = sum(float(get_attr(line, "line_total", 0)) for line in invoice_lines)
+
+            if abs(float(total_excl_vat) - lines_total) > 0.01:  # Allow for floating point errors
+                raise ValueError(f"Sum of line items ({lines_total}) does not match total excl. VAT ({total_excl_vat})")
         return values
         return self
 

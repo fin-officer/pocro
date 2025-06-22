@@ -26,12 +26,21 @@ class InvoicePreprocessor:
         Complete preprocessing pipeline for invoice images
 
         Args:
-            image: Input image as numpy array
+            image: Input image as numpy array (can be grayscale or color)
 
         Returns:
-            Preprocessed image
+            Preprocessed image as 3-channel numpy array
         """
         try:
+            # Convert to 3-channel if grayscale
+            if len(image.shape) == 2 or (len(image.shape) == 3 and image.shape[2] == 1):
+                if len(image.shape) == 2:
+                    # Convert single-channel grayscale to 3-channel
+                    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+                else:
+                    # Remove single-channel dimension
+                    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+
             # 1. Enhance DPI
             enhanced = self._enhance_dpi(image, self.target_dpi)
 
@@ -46,6 +55,10 @@ class InvoicePreprocessor:
 
             # 5. Normalize image
             normalized = self._normalize_image(contrast_enhanced)
+
+            # Ensure output is 3-channel
+            if len(normalized.shape) == 2:
+                normalized = cv2.cvtColor(normalized, cv2.COLOR_GRAY2BGR)
 
             logger.info("Image preprocessing completed successfully")
             return normalized
@@ -113,8 +126,18 @@ class InvoicePreprocessor:
 
         return image
 
-    def _rotate_image(self, image: np.ndarray, angle: float) -> np.ndarray:
-        """Rotate image by given angle"""
+    def _rotate_image(self, image: np.ndarray, angle: float, background_color=(255, 255, 255)) -> np.ndarray:
+        """
+        Rotate image by given angle
+
+        Args:
+            image: Input image as numpy array
+            angle: Rotation angle in degrees (positive for counter-clockwise)
+            background_color: Background color as RGB tuple (default: white)
+
+        Returns:
+            Rotated image
+        """
         (h, w) = image.shape[:2]
         center = (w // 2, h // 2)
 
@@ -131,18 +154,35 @@ class InvoicePreprocessor:
         M[0, 2] += (new_w / 2) - center[0]
         M[1, 2] += (new_h / 2) - center[1]
 
-        # Perform rotation
-        return cv2.warpAffine(image, M, (new_w, new_h), flags=cv2.INTER_CUBIC, borderValue=(255, 255, 255))
+        # Perform rotation with specified background color
+        if len(image.shape) == 2:  # Grayscale image
+            border_value = int(np.mean(background_color))
+        else:  # Color image
+            border_value = background_color
 
-    def _enhance_contrast(self, image: np.ndarray) -> np.ndarray:
-        """Enhance image contrast using CLAHE"""
+        return cv2.warpAffine(image, M, (new_w, new_h), flags=cv2.INTER_CUBIC, borderValue=border_value)
+
+    def _enhance_contrast(
+        self, image: np.ndarray, clip_limit: float = 3.0, tile_grid_size: tuple = (8, 8)
+    ) -> np.ndarray:
+        """
+        Enhance image contrast using CLAHE (Contrast Limited Adaptive Histogram Equalization)
+
+        Args:
+            image: Input image as numpy array
+            clip_limit: Threshold for contrast limiting (default: 3.0)
+            tile_grid_size: Size of grid for histogram equalization (default: 8x8)
+
+        Returns:
+            Contrast enhanced image
+        """
         if len(image.shape) == 3:
             # Convert to LAB color space
             lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
             l_channel, a, b = cv2.split(lab)
 
             # Apply CLAHE to L channel
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
             l_channel = clahe.apply(l_channel)
 
             # Merge channels and convert back
@@ -150,7 +190,7 @@ class InvoicePreprocessor:
             return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
         else:
             # Grayscale image
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
             return clahe.apply(image)
 
     def _normalize_image(self, image: np.ndarray) -> np.ndarray:
