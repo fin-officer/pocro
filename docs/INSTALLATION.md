@@ -1,109 +1,207 @@
-# Installation Guide
+# Instrukcja instalacji
 
-This guide will walk you through setting up the European Invoice OCR application.
+Ten przewodnik przeprowadzi Cię przez proces konfiguracji systemu do przetwarzania faktur z wykorzystaniem OCR i LLM.
 
-## Prerequisites
+## Wymagania wstępne
 
 - Python 3.10+
-- pip (Python package manager)
-- (Optional) CUDA-capable GPU for better performance
-- (Optional) Docker and Docker Compose for containerized deployment
+- pip (menedżer pakietów Pythona)
+- (Opcjonalnie) Karta graficzna z obsługą CUDA dla lepszej wydajności
+- (Opcjonalnie) Docker i Docker Compose do uruchomienia w kontenerze
+- (Opcjonalnie) Połączenie z internetem do pobrania modeli
 
-## Quick Start
+## Szybki start
 
-1. **Clone the repository**
+1. **Sklonuj repozytorium**
    ```bash
    git clone git@github.com:fin-officer/pocro.git
    cd pocro
    ```
 
-2. **Set up environment**
+2. **Skonfiguruj środowisko**
    ```bash
-   # Copy example environment file
+   # Skopiuj przykładowy plik środowiskowy
    cp .env.example .env
    ```
 
-   Edit the `.env` file to configure your settings. At minimum, set:
-   ```
-   MODEL_NAME=facebook/opt-125m  # or your preferred model
+   Zmodyfikuj plik `.env` zgodnie ze swoimi potrzebami. Minimalna konfiguracja:
+   ```env
+   MODEL_NAME=facebook/opt-125m  # lub inny preferowany model
+   OCR_ENGINE=easyocr  # lub paddleocr
+   LOG_LEVEL=INFO
    ```
 
-3. **Install dependencies**
+3. **Zainstaluj zależności**
    ```bash
-   # Create and activate virtual environment (recommended)
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   # Utwórz i aktywuj środowisko wirtualne (zalecane)
+   python -m venv .venv
+   source .venv/bin/activate  # Na Windows: .venv\Scripts\activate
 
-   # Install dependencies
-   pip install -r requirements.txt
+   # Zainstaluj zależności za pomocą Poetry
+   poetry install  # Dla środowiska developerskiego
+   # lub
+   poetry install --no-dev  # Tylko zależności produkcyjne
    ```
 
-4. **Run the application**
+4. **Uruchom aplikację**
    ```bash
-   uvicorn src.main:app --host 0.0.0.0 --port 8088 --reload
+   make run  # Używa Uvicorn z automatycznym przeładowaniem
+   # lub ręcznie:
+   # uvicorn src.main:app --host 0.0.0.0 --port 8088 --reload
    ```
 
-   The API will be available at `http://localhost:8088`
+   API będzie dostępne pod adresem: `http://localhost:8088`
+   
+   Sprawdź działanie:
+   ```bash
+   curl http://localhost:8088/health
+   ```
 
-## Configuration
+## Konfiguracja
 
-### Environment Variables
+### Zmienne środowiskowe
 
-Key configuration options in `.env`:
+Kluczowe opcje konfiguracyjne w pliku `.env`:
 
-- `MODEL_NAME`: The Hugging Face model to use (e.g., `facebook/opt-125m`)
-- `QUANTIZATION`: Model quantization method (default: `awq`)
-- `HOST`: Host to bind the server to (default: `0.0.0.0`)
-- `PORT`: Port to run the server on (default: `8088`)
-- `DEBUG`: Enable debug mode (default: `False`)
-- `GPU_MEMORY_UTILIZATION`: GPU memory utilization (0-1) (default: `0.9`)
+#### Konfiguracja modelu LLM
+- `MODEL_NAME` - Nazwa modelu z Hugging Face (np. `facebook/opt-125m`)
+- `QUANTIZATION` - Metoda kwantyzacji modelu (domyślnie: `awq`)
+- `MAX_MODEL_LENGTH` - Maksymalna długość generowanego tekstu (domyślnie: `2048`)
+- `TEMPERATURE` - Parametr temperatury generowania (domyślnie: `0.7`)
 
-### Model Configuration
+#### Konfiguracja OCR
+- `OCR_ENGINE` - Silnik OCR do użycia (`easyocr` lub `paddleocr`)
+- `OCR_LANGUAGES` - Obsługiwane języki (domyślnie: `pl,en,de`)
+- `OCR_GPU` - Czy używać akceleracji GPU (domyślnie: `True`)
 
-You can change the model by setting the `MODEL_NAME` environment variable in your `.env` file. The application supports any Hugging Face model compatible with the Transformers library.
+#### Konfiguracja serwera
+- `HOST` - Adres, na którym ma działać serwer (domyślnie: `0.0.0.0`)
+- `PORT` - Port serwera (domyślnie: `8088`)
+- `DEBUG` - Tryb debugowania (domyślnie: `False`)
+- `LOG_LEVEL` - Poziom logowania (`DEBUG`, `INFO`, `WARNING`, `ERROR`)
+- `CACHE_DIR` - Katalog na cache modeli (domyślnie: `./.cache`)
 
-Example:
+#### Przykładowa konfiguracja
+```env
+# Konfiguracja modelu
+MODEL_NAME=facebook/opt-125m
+QUANTIZATION=awq
+MAX_MODEL_LENGTH=2048
+
+# Konfiguracja OCR
+OCR_ENGINE=easyocr
+OCR_LANGUAGES=pl,en,de
+
+# Konfiguracja serwera
+HOST=0.0.0.0
+PORT=8088
+DEBUG=False
+LOG_LEVEL=INFO
+CACHE_DIR=./.cache
 ```
-MODEL_NAME=gpt2  # Use a different model
-```
 
-## Docker Installation
+## Instalacja z Dockerem
 
-1. **Build the Docker image**
+1. **Zbuduj obraz Dockera**
+   ```bash
+   make docker-build
+   ```
+   
+   lub ręcznie:
    ```bash
    docker build -t pocro .
    ```
 
-2. **Run the container**
+2. **Uruchom kontener**
    ```bash
-   docker run -p 8088:8088 --env-file .env pocro
+   make docker-run
+   ```
+   
+   lub ręcznie:
+   ```bash
+   docker run -d --name pocro -p 8088:8088 --env-file .env pocro
    ```
 
-## Verifying the Installation
+3. **Zatrzymaj kontener**
+   ```bash
+   make docker-stop
+   ```
 
-1. **Check the API**
+## Weryfikacja instalacji
+
+1. **Sprawdź stan API**
    ```bash
    curl http://localhost:8088/health
    ```
-   Should return: `{"status":"ok"}`
+   Powinno zwrócić: `{"status":"ok"}`
 
-2. **Test the API**
+2. **Przetestuj rozpoznawanie faktury**
    ```bash
    curl -X POST http://localhost:8088/process \
      -H "Content-Type: application/json" \
-     -d '{"text":"Sample invoice text"}'
+     -d '{
+       "invoice_number": "FV/2023/1234",
+       "issue_date": "2023-05-15",
+       "due_date": "2023-06-14",
+       "total_amount": 1234.56,
+       "currency": "PLN",
+       "supplier": {
+         "name": "Przykładowy Dostawca Sp. z o.o.",
+         "tax_id": "1234567890"
+       },
+       "customer": {
+         "name": "Klient Przykładowy",
+         "tax_id": "0987654321"
+       },
+       "items": [
+         {
+           "description": "Usługa przykładowa",
+           "quantity": 1,
+           "unit_price": 1000.00,
+           "tax_rate": 23,
+           "amount": 1230.00
+         }
+       ]
+     }'
    ```
 
-## Troubleshooting
+## Rozwiązywanie problemów
 
-- **Model not loading**: Ensure `MODEL_NAME` is set to a valid Hugging Face model
-- **CUDA errors**: Make sure you have the correct CUDA version installed if using GPU
-- **Port in use**: Change the `PORT` in `.env` if the default port is occupied
+### Typowe problemy i rozwiązania
 
-For more help, see the [Troubleshooting Guide](./TROUBLESHOOTING.md).
+- **Brak modułów Pythona**
+  ```bash
+  # Zainstaluj brakujące zależności
+  pip install -r requirements.txt
+  ```
 
-## Next Steps
+- **Błąd ładowania modelu**
+  - Sprawdź, czy `MODEL_NAME` w `.env` wskazuje na poprawny model
+  - Upewnij się, że masz dostęp do internetu do pobrania modelu
+  - Sprawdź uprawnienia do katalogu cache (domyślnie `~/.cache/`)
 
-- [API Documentation](./API_DOCUMENTATION.md)
-- [Deployment Guide](./DEPLOYMENT.md)
-- [Troubleshooting](./TROUBLESHOOTING.md)
+- **Błędy CUDA**
+  - Upewnij się, że masz zainstalowane odpowiednie sterowniki NVIDIA
+  - Sprawdź zgodność wersji CUDA z wymaganiami bibliotek
+  - Spróbuj wyłączyć akcelerację GPU ustawiając `OCR_GPU=False`
+
+- **Port zajęty**
+  - Zmień port w zmiennej `PORT` w pliku `.env`
+  - Sprawdź, czy inna aplikacja nie używa tego samego portu: `lsof -i :8088`
+
+- **Problemy z zależnościami**
+  ```bash
+  # Wyczyść środowisko i zainstaluj ponownie
+  rm -rf .venv
+  python -m venv .venv
+  source .venv/bin/activate
+  pip install -r requirements.txt
+  ```
+
+W przypadku dalszych problemów, zapoznaj się z przewodnikiem [Rozwiązywanie problemów](./TROUBLESHOOTING.md).
+
+## Następne kroki
+
+- [Dokumentacja API](./API_DOCUMENTATION.md)
+- [Przewodnik wdrażania](./DEPLOYMENT.md)
+- [Rozwiązywanie problemów](./TROUBLESHOOTING.md)

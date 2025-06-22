@@ -1,163 +1,235 @@
-# Troubleshooting Guide
+# Przewodnik rozwiązywania problemów
 
-This guide provides solutions to common issues you might encounter while using the European Invoice OCR application.
+Ten przewodnik zawiera rozwiązania typowych problemów, z którymi możesz się spotkać podczas korzystania z systemu do przetwarzania faktur.
 
-## Environment and Setup Issues
+## Problemy ze środowiskiem i konfiguracją
 
-### Model Not Loading
+### Problem z ładowaniem modelu
 
-**Symptom**: The application fails to start with errors about model loading or "None is not a valid model".
+**Objawy**: Aplikacja nie uruchamia się, wyświetlając błędy związane z ładowaniem modelu lub "None is not a valid model".
 
-**Solution**:
-1. Check that `.env` exists and contains a valid `MODEL_NAME`:
+**Rozwiązanie**:
+1. Sprawdź, czy plik `.env` istnieje i zawiera poprawny `MODEL_NAME`:
    ```bash
    cat .env | grep MODEL_NAME
    ```
-2. Ensure the model name is a valid Hugging Face model ID (e.g., `facebook/opt-125m`)
-3. For private models, ensure you're authenticated:
+2. Upewnij się, że nazwa modelu jest poprawnym identyfikatorem modelu z Hugging Face (np. `facebook/opt-125m`)
+3. Dla modeli prywatnych upewnij się, że jesteś uwierzytelniony:
    ```bash
    huggingface-cli login
    ```
+4. Sprawdź logi aplikacji pod kątem szczegółowych informacji o błędach
 
-### Environment Variables Not Loading
+### Zmienne środowiskowe nie są ładowane
 
-**Symptom**: Changes to `.env` are not taking effect.
+**Objawy**: Zmiany w pliku `.env` nie są uwzględniane.
 
-**Solution**:
-1. Verify the `.env` file is in the project root
-2. Ensure variables are in UPPER_CASE
-3. Restart the application after making changes
-4. Check for typos in variable names
+**Rozwiązanie**:
+1. Upewnij się, że plik `.env` znajduje się w katalogu głównym projektu
+2. Sprawdź, czy nazwy zmiennych są zapisane WIELKIMI_LITERAMI
+3. Uruchom ponownie aplikację po wprowadzeniu zmian
+4. Sprawdź literówki w nazwach zmiennych
+5. Upewnij się, że nie ma błędów składniowych w pliku `.env`
 
-### CUDA/GPU Issues
+### Problemy z CUDA/GPU
 
-**Symptom**: CUDA-related errors or warnings about falling back to CPU.
+**Objawy**: Błędy związane z CUDA lub komunikaty o przejściu na tryb CPU.
 
-**Solution**:
-1. Verify CUDA is installed:
+**Rozwiązanie**:
+1. Sprawdź, czy CUDA jest zainstalowane:
    ```bash
-   nvidia-smi  # Should show GPU info
-   nvcc --version  # Should show CUDA version
+   nvidia-smi  # Powinien wyświetlić informacje o karcie graficznej
+   nvcc --version  # Powinien wyświetlić wersję CUDA
    ```
-2. Check PyTorch CUDA compatibility:
+2. Sprawdź zgodność PyTorch z CUDA:
    ```python
    import torch
-   print(torch.cuda.is_available())  # Should be True
-   print(torch.version.cuda)  # Should match your CUDA version
+   print(torch.cuda.is_available())  # Powinno zwrócić True
+   print(torch.version.cuda)  # Powinno pasować do wersji CUDA
    ```
-3. Try setting `CUDA_VISIBLE_DEVICES` in `.env`:
-   ```
+3. Spróbuj ustawić `CUDA_VISIBLE_DEVICES` w pliku `.env`:
+   ```env
    CUDA_VISIBLE_DEVICES=0
    ```
-
-## API Issues
-
-### Port Already in Use
-
-**Symptom**: Error about port 8088 (or your configured port) being in use.
-
-**Solution**:
-1. Change the port in `.env`:
+4. Jeśli używasz Dockera, upewnij się, że kontener ma dostęp do GPU:
+   ```bash
+   docker run --gpus all ...
    ```
+
+## Problemy z API
+
+### Port jest już w użyciu
+
+**Objawy**: Błąd informujący, że port 8088 (lub inny skonfigurowany port) jest już używany.
+
+**Rozwiązanie**:
+1. Zmień port w pliku `.env`:
+   ```env
    PORT=8080
    ```
-2. Or find and kill the process using the port:
+2. Lub znajdź i zakończ proces używający portu:
    ```bash
    # Linux/macOS
-   lsof -i :8088
+   sudo lsof -i :8088
    kill -9 <PID>
    
    # Windows
    netstat -ano | findstr :8088
    taskkill /PID <PID> /F
    ```
+3. Sprawdź, czy inna instancja aplikacji nie jest już uruchomiona
 
-### CORS Errors
+### Błędy CORS
 
-**Symptom**: Browser console shows CORS errors when making API requests.
+**Objawy**: W konsoli przeglądarki pojawiają się błędy CORS przy wykonywaniu żądań do API.
 
-**Solution**:
-1. Ensure the frontend URL is in the `CORS_ORIGINS` list in `.env`:
-   ```
+**Rozwiązanie**:
+1. Upewnij się, że adres URL frontendu znajduje się na liście `CORS_ORIGINS` w pliku `.env`:
+   ```env
    CORS_ORIGINS=http://localhost:3000,http://localhost:8080
    ```
-2. For development, you can allow all origins (not recommended for production):
-   ```
+2. W środowisku deweloperskim możesz zezwolić na wszystkie źródła (niezalecane w produkcji):
+   ```env
    CORS_ORIGINS=*
    ```
+3. Sprawdź, czy nagłówki CORS są prawidłowo ustawione w odpowiedziach serwera
 
-## Performance Issues
+## Problemy z wydajnością
 
-### Slow Processing
+### Wolne działanie aplikacji
 
-**Symptom**: The application is running slowly.
+**Objawy**: Aplikacja działa zbyt wolno.
 
-**Solution**:
-1. Check GPU utilization:
+**Rozwiązanie**:
+1. Sprawdź wykorzystanie GPU:
    ```bash
-   nvidia-smi -l 1  # Watch GPU usage
+   watch -n 1 nvidia-smi  # Monitoruj wykorzystanie GPU co sekundę
    ```
-2. Try a smaller model or enable quantization in `.env`:
+2. Spróbuj użyć mniejszego modelu lub włącz kwantyzację w pliku `.env`:
+   ```env
+   QUANTIZATION=awq  # lub nf4 dla nowszych kart
    ```
-   QUANTIZATION=awq
-   ```
-3. Increase batch size if processing multiple documents:
-   ```
+3. Zwiększ rozmiar wsadu (batch size) przy przetwarzaniu wielu dokumentów:
+   ```env
    BATCH_SIZE=8
    ```
+4. Sprawdź, czy aplikacja korzysta z GPU zamiast CPU
+5. Zoptymalizuj rozmiar obrazów przed przetwarzaniem OCR
 
-### High Memory Usage
+### Wysokie zużycie pamięci
 
-**Symptom**: Application crashes with out-of-memory errors.
+**Objawy**: Aplikacja ulega awarii z powodu braku pamięci.
 
-**Solution**:
-1. Reduce GPU memory usage in `.env`:
-   ```
+**Rozwiązanie**:
+1. Zmniejsz wykorzystanie pamięci GPU w pliku `.env`:
+   ```env
    GPU_MEMORY_UTILIZATION=0.8
    ```
-2. Use a smaller model
-3. Enable gradient checkpointing if training:
-   ```
+2. Użyj mniejszego modelu
+3. Włącz sprawdzanie gradientu (gradient checkpointing) jeśli trenujesz model:
+   ```env
    GRADIENT_CHECKPOINTING=True
    ```
+4. Ogranicz rozmiar przetwarzanych danych jednorazowo
+5. Sprawdź wycieki pamięci w kodzie
 
-## Debugging
+## Debugowanie
 
-### Enable Debug Logging
+### Włączanie szczegółowych logów
 
-Set the log level in `.env`:
-```
+Ustaw poziom logowania w pliku `.env`:
+```env
 LOG_LEVEL=DEBUG
 ```
 
-### Check Logs
+### Sprawdzanie logów
 
-Logs are written to `logs/app.log` by default. Check them for detailed error messages.
+Domyślnie logi są zapisywane w pliku `logs/app.log`. Sprawdź je w poszukiwaniu szczegółowych komunikatów o błędach.
 
-## Getting Help
+### Najczęstsze komunikaty błędów
 
-If you've tried these solutions and are still experiencing issues:
+#### "No module named 'transformers'"
 
-1. Check the [GitHub Issues](https://github.com/finofficer/pocro/issues) for similar problems
-2. Include the following in any bug reports:
-   - Your `.env` file (with sensitive information removed)
-   - The full error message and stack trace
-   - Steps to reproduce the issue
-   - Your environment (OS, Python version, CUDA version if using GPU)
-
-## Common Error Messages
-
-### "No module named 'transformers'"
-
-Install the required packages:
+Zainstaluj wymagane pakiety:
 ```bash
+pip install -r requirements.txt
+# lub
+poetry install
+```
+
+#### "CUDA out of memory"
+
+1. Zmniejsz rozmiar wsadu (batch size)
+2. Użyj mniejszego modelu
+3. Włącz zarządzanie pamięcią CUDA w pliku `.env`:
+   ```env
+   GPU_MEMORY_UTILIZATION=0.8
+   ```
+4. Spróbuj włączyć kwantyzację:
+   ```env
+   QUANTIZATION=awq
+   ```
+
+#### "ConnectionError: Couldn't reach server"
+
+1. Sprawdź połączenie z internetem
+2. Upewnij się, że masz dostęp do Hugging Face Hub
+3. Sprawdź ustawienia proxy, jeśli korzystasz z niego w sieci firmowej
+
+#### "Error loading shared libraries: libcuda.so.1"
+
+1. Upewnij się, że sterowniki NVIDIA są poprawnie zainstalowane
+2. Sprawdź, czy ścieżka do bibliotek CUDA jest dodana do zmiennej środowiskowej `LD_LIBRARY_PATH`
+
+## Uzyskiwanie pomocy
+
+Jeśli wypróbowałeś powyższe rozwiązania i nadal występują problemy:
+
+1. Sprawdź [zgłoszenia na GitHubie](https://github.com/finofficer/pocro/issues) pod kątem podobnych problemów
+2. Przy zgłaszaniu błędu uwzględnij:
+   - Zawartość pliku `.env` (z usuniętymi danymi wrażliwymi)
+   - Pełny komunikat błędu i stos wywołań (stack trace)
+   - Kroki prowadzące do odtworzenia problemu
+   - Informacje o środowisku (system operacyjny, wersja Pythona, wersja CUDA jeśli używane jest GPU)
+   - Logi aplikacji
+
+## Przydatne komendy
+
+### Sprawdzanie wersji Pythona i pakietów
+```bash
+python --version
+pip list | grep -E "torch|transformers|fastapi"
+```
+
+### Czyszczenie pamięci podręcznej PyTorch
+```bash
+# Usuwa załadowane modele z pamięci podręcznej
+torch.cuda.empty_cache()
+```
+
+### Sprawdzanie wykorzystania dysku przez modele
+```bash
+du -sh ~/.cache/huggingface/hub/
+du -sh ~/.cache/torch/
+```
+
+### Resetowanie środowiska
+```bash
+# Usuń środowisko wirtualne i zainstaluj ponownie
+rm -rf .venv
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### "CUDA out of memory"
+### Aktualizacja zależności
+```bash
+# Zaktualizuj wszystkie zależności do najnowszych wersji
+poetry update
+# lub
+pip install --upgrade -r requirements.txt
+```
 
-Reduce batch size or model size, or enable gradient accumulation.
+## Wsparcie
 
-### "ConnectionError: Couldn't reach server"
-
-Check your internet connection and that Hugging Face Hub is accessible.
+W razie pytań lub problemów, skontaktuj się z zespołem wsparcia lub utwórz nowe zgłoszenie w repozytorium projektu.
